@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Upload, FileSpreadsheet, Search, Filter, RefreshCw,
-  Download, Trash2, Check, ChevronDown, X, TrendingUp, Package
+  Download, Trash2, Check, ChevronDown, X, TrendingUp, Package, LogOut
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -207,7 +207,7 @@ export default function Dashboard() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* ── HEADER ── */}
-      <header className="shrink-0 glass border-b border-white/5 px-6 py-3 flex items-center justify-between gap-4">
+      <header className="shrink-0 glass border-b border-white/5 px-4 md:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Package className="w-6 h-6 text-blue-400" />
           <div>
@@ -216,7 +216,7 @@ export default function Dashboard() {
             </h1>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
           <input type="file" ref={fileInputRef} className="hidden" accept=".xls,.xlsx" onChange={handleFileUpload} />
           <button onClick={() => fileInputRef.current?.click()} disabled={isUploading}
             className="glass hover:bg-white/10 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
@@ -230,6 +230,10 @@ export default function Dashboard() {
           <button onClick={handleFineTurno}
             className="bg-red-900/40 hover:bg-red-800/60 text-red-300 border border-red-700/40 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
             <Trash2 className="w-4 h-4" /> Fine Turno
+          </button>
+          <button onClick={() => supabase.auth.signOut()}
+            className="bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
+            <LogOut className="w-4 h-4" /> Esci
           </button>
         </div>
       </header>
@@ -258,7 +262,7 @@ export default function Dashboard() {
               )}
             </div>
             {/* Dropdown row */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <DropdownFilter label="Negozio" options={uniqueNegozi} value={filterNegozio} onChange={setFilterNegozio} />
               <DropdownFilter label="Vettore" options={uniqueVettori} value={filterVettore} onChange={setFilterVettore} />
               <DropdownFilter label="Data Carico" options={uniqueDataCarico} value={filterDataCarico} onChange={setFilterDataCarico} />
@@ -336,7 +340,7 @@ export default function Dashboard() {
         </div>
 
         {/* ════════ COLONNA DESTRA: statistiche + grafici ════════ */}
-        <aside className="w-[340px] shrink-0 border-l border-white/5 bg-black/20 overflow-y-auto p-4 space-y-4">
+        <aside className="hidden lg:block w-[340px] shrink-0 border-l border-white/5 bg-black/20 overflow-y-auto p-4 space-y-4">
 
           {/* Stat cards 2x2 */}
           <div className="grid grid-cols-2 gap-3">
