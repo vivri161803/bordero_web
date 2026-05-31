@@ -90,6 +90,8 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
   const [filterStato, setFilterStato] = useState("");
   const [onlineAdmins, setOnlineAdmins] = useState(0);
   const [onlineGuests, setOnlineGuests] = useState(0);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
 
   /* ─── Supabase ─── */
   useEffect(() => {
@@ -219,11 +221,16 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
     if (error) fetchData();
   };
 
-  const handleFineTurno = async () => {
-    if (confirm("Sei sicuro di voler svuotare il database e iniziare un nuovo turno?")) {
-      setLoading(true);
-      try { await fetch("/api/reset", { method: "POST" }); await fetchData(); }
-      catch { alert("Errore durante il reset."); setLoading(false); }
+  const executeReset = async () => {
+    setLoading(true);
+    setShowResetModal(false);
+    setResetConfirmText("");
+    try {
+      await fetch("/api/reset", { method: "POST" });
+      await fetchData();
+    } catch {
+      alert("Errore durante il reset.");
+      setLoading(false);
     }
   };
 
@@ -283,9 +290,9 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
             <Download className="w-4 h-4" /> Export CSV
           </button>
           {!isGuest && (
-            <button onClick={handleFineTurno}
+            <button onClick={() => { setResetConfirmText(""); setShowResetModal(true); }}
               className="bg-red-900/40 hover:bg-red-800/60 text-red-300 border border-red-700/40 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
-              <Trash2 className="w-4 h-4" /> Fine Turno
+              <Trash2 className="w-4 h-4" /> Cancella Tabella
             </button>
           )}
           <button onClick={onLogout}
@@ -499,6 +506,56 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
           )}
         </aside>
       </div>
+
+      {/* ── CUSTOM CONFIRM RESET MODAL ── */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md glass p-6 rounded-2xl border border-white/15 shadow-2xl relative space-y-4">
+            <div className="flex items-center gap-3 text-red-400">
+              <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base">Cancella Tabella</h3>
+                <p className="text-[10px] text-red-400 font-semibold uppercase tracking-wider">Azione Irreversibile</p>
+              </div>
+            </div>
+            
+            <p className="text-xs text-gray-300 leading-relaxed">
+              Questa azione eliminerà permanentemente tutti i record correnti dal database. I dati del turno non potranno essere recuperati.
+            </p>
+            
+            <div className="space-y-2">
+              <label className="block text-[10px] uppercase tracking-wider text-gray-400 font-semibold">
+                Per confermare, digita <span className="text-red-400 font-bold font-mono">cancella</span>:
+              </label>
+              <input
+                type="text"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder="cancella"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all font-mono"
+              />
+            </div>
+            
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                onClick={() => { setShowResetModal(false); setResetConfirmText(""); }}
+                className="px-4 py-2 rounded-lg border border-white/10 text-xs text-gray-300 hover:text-white hover:bg-white/5 transition-all"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={executeReset}
+                disabled={resetConfirmText !== "cancella"}
+                className="bg-red-600 hover:bg-red-500 disabled:bg-red-950 disabled:text-gray-500 text-white font-medium px-4 py-2 rounded-lg transition-all text-xs flex items-center gap-1.5 shadow-[0_0_15px_rgba(220,38,38,0.2)]"
+              >
+                Conferma Cancellazione
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
