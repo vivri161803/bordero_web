@@ -87,6 +87,7 @@ export default function Dashboard() {
   const [filterVettore, setFilterVettore] = useState("");
   const [filterDataCarico, setFilterDataCarico] = useState("");
   const [filterDataConsegna, setFilterDataConsegna] = useState("");
+  const [filterStato, setFilterStato] = useState("");
 
   /* ─── Supabase ─── */
   useEffect(() => {
@@ -112,6 +113,7 @@ export default function Dashboard() {
   const uniqueVettori = useMemo(() => [...new Set(data.map((d) => d.name).filter(Boolean))].sort(), [data]);
   const uniqueDataCarico = useMemo(() => [...new Set(data.map((d) => d.data_arrivo_carico).filter(Boolean))].sort(), [data]);
   const uniqueDataConsegna = useMemo(() => [...new Set(data.map((d) => d.data_consegna).filter(Boolean))].sort(), [data]);
+  const uniqueStati = useMemo(() => [...new Set(data.map((d) => d.stato).filter(Boolean))].sort(), [data]);
 
   /* ─── Filtered data ─── */
   const filteredData = useMemo(() => {
@@ -126,12 +128,13 @@ export default function Dashboard() {
       const matchVettore = !filterVettore || item.name === filterVettore;
       const matchDataCarico = !filterDataCarico || item.data_arrivo_carico === filterDataCarico;
       const matchDataConsegna = !filterDataConsegna || item.data_consegna === filterDataConsegna;
-      return matchSearch && matchNegozio && matchVettore && matchDataCarico && matchDataConsegna;
+      const matchStato = !filterStato || item.stato === filterStato;
+      return matchSearch && matchNegozio && matchVettore && matchDataCarico && matchDataConsegna && matchStato;
     });
-  }, [data, searchTerm, filterNegozio, filterVettore, filterDataCarico, filterDataConsegna]);
+  }, [data, searchTerm, filterNegozio, filterVettore, filterDataCarico, filterDataConsegna, filterStato]);
 
-  const activeFilterCount = [filterNegozio, filterVettore, filterDataCarico, filterDataConsegna].filter(Boolean).length;
-  const clearAllFilters = () => { setSearchTerm(""); setFilterNegozio(""); setFilterVettore(""); setFilterDataCarico(""); setFilterDataConsegna(""); };
+  const activeFilterCount = [filterNegozio, filterVettore, filterDataCarico, filterDataConsegna, filterStato].filter(Boolean).length;
+  const clearAllFilters = () => { setSearchTerm(""); setFilterNegozio(""); setFilterVettore(""); setFilterDataCarico(""); setFilterDataConsegna(""); setFilterStato(""); };
 
   /* ─── Chart data ─── */
   const chartPalletPerVettore = useMemo(() => {
@@ -262,11 +265,12 @@ export default function Dashboard() {
               )}
             </div>
             {/* Dropdown row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
               <DropdownFilter label="Negozio" options={uniqueNegozi} value={filterNegozio} onChange={setFilterNegozio} />
               <DropdownFilter label="Vettore" options={uniqueVettori} value={filterVettore} onChange={setFilterVettore} />
               <DropdownFilter label="Data Carico" options={uniqueDataCarico} value={filterDataCarico} onChange={setFilterDataCarico} />
               <DropdownFilter label="Data Consegna" options={uniqueDataConsegna} value={filterDataConsegna} onChange={setFilterDataConsegna} />
+              <DropdownFilter label="Stato" options={uniqueStati} value={filterStato} onChange={setFilterStato} />
             </div>
             <div className="flex items-center gap-2 text-[11px] text-gray-500">
               <Filter className="w-3 h-3" />
