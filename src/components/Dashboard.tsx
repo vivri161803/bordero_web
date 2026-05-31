@@ -76,7 +76,7 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
 }
 
 /* ═══════════════════════════════════════════ */
-export default function Dashboard() {
+export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boolean; onLogout: () => void }) {
   const [data, setData] = useState<Consegna[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -88,6 +88,8 @@ export default function Dashboard() {
   const [filterDataCarico, setFilterDataCarico] = useState("");
   const [filterDataConsegna, setFilterDataConsegna] = useState("");
   const [filterStato, setFilterStato] = useState("");
+  const [onlineAdmins, setOnlineAdmins] = useState(0);
+  const [onlineGuests, setOnlineGuests] = useState(0);
 
   /* ─── Supabase ─── */
   useEffect(() => {
@@ -96,8 +98,43 @@ export default function Dashboard() {
       .channel("consegne_changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "consegne" }, () => fetchData())
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+
+    // Canale di presenza per contare gli utenti collegati in tempo reale
+    const presenceChannel = supabase.channel("online_presence", {
+      config: {
+        presence: {
+          key: isGuest ? `guest-${Math.random().toString(36).substring(2, 9)}` : `admin-${Math.random().toString(36).substring(2, 9)}`,
+        },
+      },
+    });
+
+    presenceChannel
+      .on("presence", { event: "sync" }, () => {
+        const state = presenceChannel.presenceState();
+        let admins = 0;
+        let guests = 0;
+        Object.values(state).forEach((presences: any) => {
+          presences.forEach((presence: any) => {
+            if (presence.role === "admin") admins++;
+            else if (presence.role === "guest") guests++;
+          });
+        });
+        setOnlineAdmins(admins);
+        setOnlineGuests(guests);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await presenceChannel.track({
+            role: isGuest ? "guest" : "admin",
+          });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+      supabase.removeChannel(presenceChannel);
+    };
+  }, [isGuest]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -176,6 +213,7 @@ export default function Dashboard() {
   };
 
   const togglePreparata = async (id: number, cur: boolean) => {
+    if (isGuest) return;
     setData(data.map((i) => (i.id === id ? { ...i, preparata: !cur } : i)));
     const { error } = await supabase.from("consegne").update({ preparata: !cur }).eq("id", id);
     if (error) fetchData();
@@ -213,28 +251,44 @@ export default function Dashboard() {
       <header className="shrink-0 glass border-b border-white/5 px-4 md:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Package className="w-6 h-6 text-blue-400" />
-          <div>
+          <div className="flex items-center gap-2">
             <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
               Dashboard Consegne
             </h1>
+            {isGuest && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/5 border border-white/10 text-gray-400 whitespace-nowrap">
+                Ospite (Solo Lettura)
+              </span>
+            )}
+            <div className="flex items-center gap-1.5 ml-2 text-[10px] text-gray-400 bg-white/5 px-2.5 py-0.5 rounded-full border border-white/5">
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+              <span>{onlineAdmins} Admin</span>
+              <span className="text-white/10">•</span>
+              <span>{onlineGuests} {onlineGuests === 1 ? "Ospite" : "Ospiti"}</span>
+              <span className="text-gray-500 ml-1 font-medium">(max 200)</span>
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
           <input type="file" ref={fileInputRef} className="hidden" accept=".xls,.xlsx" onChange={handleFileUpload} />
-          <button onClick={() => fileInputRef.current?.click()} disabled={isUploading}
-            className="glass hover:bg-white/10 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
-            {isUploading ? <RefreshCw className="animate-spin w-4 h-4" /> : <Upload className="w-4 h-4" />}
-            {isUploading ? "Elaborazione..." : "Carica Excel"}
-          </button>
+          {!isGuest && (
+            <button onClick={() => fileInputRef.current?.click()} disabled={isUploading}
+              className="glass hover:bg-white/10 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
+              {isUploading ? <RefreshCw className="animate-spin w-4 h-4" /> : <Upload className="w-4 h-4" />}
+              {isUploading ? "Elaborazione..." : "Carica Excel"}
+            </button>
+          )}
           <button onClick={downloadCSV}
             className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all shadow-[0_0_12px_rgba(37,99,235,0.3)]">
             <Download className="w-4 h-4" /> Export CSV
           </button>
-          <button onClick={handleFineTurno}
-            className="bg-red-900/40 hover:bg-red-800/60 text-red-300 border border-red-700/40 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
-            <Trash2 className="w-4 h-4" /> Fine Turno
-          </button>
-          <button onClick={() => supabase.auth.signOut()}
+          {!isGuest && (
+            <button onClick={handleFineTurno}
+              className="bg-red-900/40 hover:bg-red-800/60 text-red-300 border border-red-700/40 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
+              <Trash2 className="w-4 h-4" /> Fine Turno
+            </button>
+          )}
+          <button onClick={onLogout}
             className="bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all">
             <LogOut className="w-4 h-4" /> Esci
           </button>
@@ -302,17 +356,22 @@ export default function Dashboard() {
                 ) : filteredData.length === 0 ? (
                   <tr><td colSpan={9} className="p-12 text-center text-gray-400">
                     <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                    {data.length === 0 ? "Carica un file Excel per iniziare." : "Nessun risultato con i filtri attivi."}
+                    {data.length === 0 
+                      ? (isGuest ? "In attesa che l'amministratore carichi i dati del turno." : "Carica un file Excel per iniziare.") 
+                      : "Nessun risultato con i filtri attivi."}
                   </td></tr>
                 ) : (
                   filteredData.map((row) => (
                     <tr key={row.id} className={`hover:bg-white/5 transition-colors ${row.preparata ? "bg-emerald-900/10" : ""}`}>
                       <td className="p-3 text-center">
                         <button onClick={() => togglePreparata(row.id, row.preparata)}
+                          disabled={isGuest}
                           className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${
+                            isGuest ? "cursor-not-allowed opacity-60" : ""
+                          } ${
                             row.preparata
                               ? "bg-emerald-500 border-emerald-400 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]"
-                              : "bg-black/20 border-gray-600 text-transparent hover:border-gray-400"
+                              : "bg-black/20 border-gray-600 text-transparent" + (isGuest ? "" : " hover:border-gray-400")
                           }`}>
                           <Check className="w-3 h-3" />
                         </button>

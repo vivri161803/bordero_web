@@ -4,7 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Lock, Mail, Eye, EyeOff, Package } from "lucide-react";
 
-export default function Login() {
+export default function Login({ onGuestLogin }: { onGuestLogin: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -113,6 +113,20 @@ export default function Login() {
             className="w-full mt-6 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:text-gray-400 text-white font-medium py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)] flex items-center justify-center gap-2 text-sm"
           >
             {loading ? "Accesso in corso..." : "Accedi"}
+          </button>
+
+          <div className="relative flex py-2 items-center">
+            <div className="flex-grow border-t border-white/5"></div>
+            <span className="flex-shrink mx-3 text-[10px] text-gray-500 uppercase tracking-wider font-semibold">oppure</span>
+            <div className="flex-grow border-t border-white/5"></div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onGuestLogin}
+            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white font-medium py-2 rounded-lg transition-all text-sm"
+          >
+            Accedi come Ospite
           </button>
         </form>
       </div>

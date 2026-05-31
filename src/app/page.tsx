@@ -8,18 +8,34 @@ import { RefreshCw } from "lucide-react";
 
 export default function Home() {
   const [session, setSession] = useState<any>(null);
+  const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Controlla la sessione iniziale
+    // Controlla se l'utente ha una sessione ospite attiva
+    const guestActive = sessionStorage.getItem("bordero_guest") === "true";
+    if (guestActive) {
+      setIsGuest(true);
+    }
+
+    // Controlla la sessione iniziale di Supabase
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+      if (session) {
+        setSession(session);
+        setIsGuest(false); // L'utente registrato ha la precedenza
+      }
       setLoading(false);
     });
 
     // Ascolta i cambiamenti dello stato di autenticazione
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+      if (session) {
+        setSession(session);
+        setIsGuest(false);
+        sessionStorage.removeItem("bordero_guest");
+      } else {
+        setSession(null);
+      }
       setLoading(false);
     });
 
@@ -27,6 +43,18 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, []);
+
+  const handleGuestLogin = () => {
+    sessionStorage.setItem("bordero_guest", "true");
+    setIsGuest(true);
+  };
+
+  const handleLogout = async () => {
+    sessionStorage.removeItem("bordero_guest");
+    setIsGuest(false);
+    setSession(null);
+    await supabase.auth.signOut();
+  };
 
   if (loading) {
     return (
@@ -36,9 +64,15 @@ export default function Home() {
     );
   }
 
+  const isAuthenticated = !!session || isGuest;
+
   return (
     <main>
-      {session ? <Dashboard /> : <Login />}
+      {isAuthenticated ? (
+        <Dashboard isGuest={isGuest} onLogout={handleLogout} />
+      ) : (
+        <Login onGuestLogin={handleGuestLogin} />
+      )}
     </main>
   );
 }
