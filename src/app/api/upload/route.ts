@@ -32,10 +32,11 @@ export async function POST(req: NextRequest) {
       let vettore = "";
       if (data[2] && data[2][5]) vettore = String(data[2][5]).trim();
 
-      let data_consegna = null;
-      let data_consegna_raw = data[2] && data[2][11] ? String(data[2][11]) : "";
-      if (data_consegna_raw.includes("DATA CONSEGNA")) {
-        data_consegna = data_consegna_raw.replace("DATA CONSEGNA:", "").trim();
+      let data_consegna: string | null = null;
+      // Extract initial data_consegna from the first header
+      const initialConsegnaRaw = data[2] && data[2][11] ? String(data[2][11]) : "";
+      if (initialConsegnaRaw.includes("DATA CONSEGNA")) {
+        data_consegna = initialConsegnaRaw.replace("DATA CONSEGNA:", "").trim();
       }
 
       let currentBordero: string | null = null;
@@ -45,7 +46,33 @@ export async function POST(req: NextRequest) {
       for (let i = 5; i < data.length; i++) {
         const row = data[i];
         if (!row) continue;
-        
+
+        // Detect new sub-table headers: rows containing "VETTORE:" or "DATA CONSEGNA"
+        // These header rows appear when a new section starts within the same sheet
+        const vettoreCell = row[3] ? String(row[3]).trim() : "";
+        if (vettoreCell.startsWith("VETTORE:") || vettoreCell === "VETTORE:") {
+          // Update vettore from this new header
+          if (row[5]) vettore = String(row[5]).trim();
+          // Check for DATA CONSEGNA in this header row
+          const consegnaRaw = row[11] ? String(row[11]) : "";
+          if (consegnaRaw.includes("DATA CONSEGNA")) {
+            data_consegna = consegnaRaw.replace("DATA CONSEGNA:", "").trim();
+          }
+          continue;
+        }
+
+        // Also check if any cell in the row contains DATA CONSEGNA
+        // (the header structure may vary slightly)
+        for (let c = 8; c < (row.length || 0); c++) {
+          if (row[c]) {
+            const cellStr = String(row[c]);
+            if (cellStr.includes("DATA CONSEGNA")) {
+              data_consegna = cellStr.replace("DATA CONSEGNA:", "").trim();
+              break;
+            }
+          }
+        }
+
         const dataBorderoCell = row[1];
         const canCell = row[3];
         
