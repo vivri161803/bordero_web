@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Upload, FileSpreadsheet, Search, Filter, RefreshCw,
-  Download, Trash2, Check, ChevronDown, X, TrendingUp, Package, LogOut
+  Download, Trash2, Check, ChevronDown, ChevronRight, X, TrendingUp, Package, LogOut,
+  Layers, List, MapPin
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -26,6 +27,19 @@ type Consegna = {
   controllo: string;
   totale: number;
   preparata: boolean;
+};
+
+type GroupedBordero = {
+  bordero: string;
+  stato: string;
+  name: string;
+  data_arrivo_carico: string;
+  data_consegna: string;
+  ora_partenza: string;
+  fermate: Consegna[];
+  totalePallet: number;
+  tuttePreparate: boolean;
+  pronteCount: number;
 };
 
 const CHART_COLORS = [
@@ -92,6 +106,8 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
   const [onlineGuests, setOnlineGuests] = useState(0);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
+  const [viewMode, setViewMode] = useState<"flat" | "grouped">("flat");
+  const [expandedBordero, setExpandedBordero] = useState<Set<string>>(new Set());
 
   /* ─── Supabase ─── */
   useEffect(() => {
@@ -174,6 +190,44 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
 
   const activeFilterCount = [filterNegozio, filterVettore, filterDataCarico, filterDataConsegna, filterStato].filter(Boolean).length;
   const clearAllFilters = () => { setSearchTerm(""); setFilterNegozio(""); setFilterVettore(""); setFilterDataCarico(""); setFilterDataConsegna(""); setFilterStato(""); };
+
+  /* ─── Grouped data ─── */
+  const groupedData = useMemo(() => {
+    const map = new Map<string, Consegna[]>();
+    filteredData.forEach((row) => {
+      const key = row.bordero || "__no_bordero__";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(row);
+    });
+    const groups: GroupedBordero[] = [];
+    map.forEach((fermate, bordero) => {
+      const first = fermate[0];
+      const totalePallet = fermate.reduce((sum, f) => sum + (f.totale || 0), 0);
+      const pronteCount = fermate.filter((f) => f.preparata).length;
+      groups.push({
+        bordero,
+        stato: first.stato,
+        name: first.name,
+        data_arrivo_carico: first.data_arrivo_carico,
+        data_consegna: first.data_consegna,
+        ora_partenza: first.ora_partenza,
+        fermate,
+        totalePallet,
+        tuttePreparate: pronteCount === fermate.length,
+        pronteCount,
+      });
+    });
+    return groups;
+  }, [filteredData]);
+
+  const toggleExpanded = (bordero: string) => {
+    setExpandedBordero((prev) => {
+      const next = new Set(prev);
+      if (next.has(bordero)) next.delete(bordero);
+      else next.add(bordero);
+      return next;
+    });
+  };
 
   /* ─── Chart data ─── */
   const chartPalletPerVettore = useMemo(() => {
@@ -333,79 +387,258 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
               <DropdownFilter label="Data Consegna" options={uniqueDataConsegna} value={filterDataConsegna} onChange={setFilterDataConsegna} />
               <DropdownFilter label="Stato" options={uniqueStati} value={filterStato} onChange={setFilterStato} />
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-gray-500">
-              <Filter className="w-3 h-3" />
-              {filteredData.length} di {data.length} righe
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                <Filter className="w-3 h-3" />
+                {viewMode === "grouped"
+                  ? <>{groupedData.length} borderò ({filteredData.length} fermate totali)</>
+                  : <>{filteredData.length} di {data.length} righe</>}
+              </div>
+              <div className="flex items-center gap-1 bg-white/5 rounded-lg border border-white/10 p-0.5">
+                <button
+                  onClick={() => setViewMode("flat")}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                    viewMode === "flat"
+                      ? "bg-blue-500/20 text-blue-300 shadow-sm"
+                      : "text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  <List className="w-3 h-3" /> Tutte le righe
+                </button>
+                <button
+                  onClick={() => setViewMode("grouped")}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                    viewMode === "grouped"
+                      ? "bg-blue-500/20 text-blue-300 shadow-sm"
+                      : "text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  <Layers className="w-3 h-3" /> Per Borderò
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Tabella scrollabile */}
           <div className="flex-1 overflow-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-black/40 text-gray-300 uppercase font-semibold text-[11px] tracking-wider sticky top-0 z-10">
-                <tr>
-                  <th className="p-3 w-14 text-center">Pronta</th>
-                  <th className="p-3">Stato</th>
-                  <th className="p-3">Borderò</th>
-                  <th className="p-3">Negozio</th>
-                  <th className="p-3">Vettore</th>
-                  <th className="p-3">Data Carico</th>
-                  <th className="p-3">Data Cons.</th>
-                  <th className="p-3">Ora Part.</th>
-                  <th className="p-3 text-right">Pallet</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {loading && data.length === 0 ? (
-                  <tr><td colSpan={9} className="p-12 text-center text-gray-400">
-                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50" />Caricamento...
-                  </td></tr>
-                ) : filteredData.length === 0 ? (
-                  <tr><td colSpan={9} className="p-12 text-center text-gray-400">
-                    <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                    {data.length === 0 
-                      ? (isGuest ? "In attesa che l'amministratore carichi i dati del turno." : "Carica un file Excel per iniziare.") 
-                      : "Nessun risultato con i filtri attivi."}
-                  </td></tr>
-                ) : (
-                  filteredData.map((row) => (
-                    <tr key={row.id} className={`hover:bg-white/5 transition-colors ${row.preparata ? "bg-emerald-900/10" : ""}`}>
-                      <td className="p-3 text-center">
-                        <button onClick={() => togglePreparata(row.id, row.preparata)}
-                          disabled={isGuest}
-                          className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${
-                            isGuest ? "cursor-not-allowed opacity-60" : ""
-                          } ${
-                            row.preparata
-                              ? "bg-emerald-500 border-emerald-400 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]"
-                              : "bg-black/20 border-gray-600 text-transparent" + (isGuest ? "" : " hover:border-gray-400")
-                          }`}>
-                          <Check className="w-3 h-3" />
-                        </button>
-                      </td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          row.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
-                          row.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
-                          row.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
-                          "bg-gray-500/20 text-gray-300 border border-gray-500/30"
-                        }`}>{row.stato || "N/A"}</span>
-                      </td>
-                      <td className="p-3 font-mono text-xs text-gray-300">{row.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</td>
-                      <td className="p-3">
-                        <div className="font-medium text-white text-xs">{row.descrizione}</div>
-                        <div className="text-[10px] text-gray-500">#{row.negozio}</div>
-                      </td>
-                      <td className="p-3 text-gray-300 text-xs">{row.name}</td>
-                      <td className="p-3 text-gray-400 text-xs">{row.data_arrivo_carico}</td>
-                      <td className="p-3 text-gray-400 text-xs">{row.data_consegna}</td>
-                      <td className="p-3 text-gray-400 text-xs">{row.ora_partenza}</td>
-                      <td className="p-3 text-right font-bold text-white">{row.totale}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            {viewMode === "flat" ? (
+              /* ═══ VISTA PIATTA (originale) ═══ */
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-black/40 text-gray-300 uppercase font-semibold text-[11px] tracking-wider sticky top-0 z-10">
+                  <tr>
+                    <th className="p-3 w-14 text-center">Pronta</th>
+                    <th className="p-3">Stato</th>
+                    <th className="p-3">Borderò</th>
+                    <th className="p-3">Negozio</th>
+                    <th className="p-3">Vettore</th>
+                    <th className="p-3">Data Carico</th>
+                    <th className="p-3">Data Cons.</th>
+                    <th className="p-3">Ora Part.</th>
+                    <th className="p-3 text-right">Pallet</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {loading && data.length === 0 ? (
+                    <tr><td colSpan={9} className="p-12 text-center text-gray-400">
+                      <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50" />Caricamento...
+                    </td></tr>
+                  ) : filteredData.length === 0 ? (
+                    <tr><td colSpan={9} className="p-12 text-center text-gray-400">
+                      <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                      {data.length === 0 
+                        ? (isGuest ? "In attesa che l'amministratore carichi i dati del turno." : "Carica un file Excel per iniziare.") 
+                        : "Nessun risultato con i filtri attivi."}
+                    </td></tr>
+                  ) : (
+                    filteredData.map((row) => (
+                      <tr key={row.id} className={`hover:bg-white/5 transition-colors ${row.preparata ? "bg-emerald-900/10" : ""}`}>
+                        <td className="p-3 text-center">
+                          <button onClick={() => togglePreparata(row.id, row.preparata)}
+                            disabled={isGuest}
+                            className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${
+                              isGuest ? "cursor-not-allowed opacity-60" : ""
+                            } ${
+                              row.preparata
+                                ? "bg-emerald-500 border-emerald-400 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                                : "bg-black/20 border-gray-600 text-transparent" + (isGuest ? "" : " hover:border-gray-400")
+                            }`}>
+                            <Check className="w-3 h-3" />
+                          </button>
+                        </td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            row.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
+                            row.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
+                            row.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                            "bg-gray-500/20 text-gray-300 border border-gray-500/30"
+                          }`}>{row.stato || "N/A"}</span>
+                        </td>
+                        <td className="p-3 font-mono text-xs text-gray-300">{row.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</td>
+                        <td className="p-3">
+                          <div className="font-medium text-white text-xs">{row.descrizione}</div>
+                          <div className="text-[10px] text-gray-500">#{row.negozio}</div>
+                        </td>
+                        <td className="p-3 text-gray-300 text-xs">{row.name}</td>
+                        <td className="p-3 text-gray-400 text-xs">{row.data_arrivo_carico}</td>
+                        <td className="p-3 text-gray-400 text-xs">{row.data_consegna}</td>
+                        <td className="p-3 text-gray-400 text-xs">{row.ora_partenza}</td>
+                        <td className="p-3 text-right font-bold text-white">{row.totale}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              /* ═══ VISTA RAGGRUPPATA PER BORDERÒ ═══ */
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-black/40 text-gray-300 uppercase font-semibold text-[11px] tracking-wider sticky top-0 z-10">
+                  <tr>
+                    <th className="p-3 w-10"></th>
+                    <th className="p-3">Stato</th>
+                    <th className="p-3">Borderò</th>
+                    <th className="p-3">Vettore</th>
+                    <th className="p-3">Data Carico</th>
+                    <th className="p-3">Data Cons.</th>
+                    <th className="p-3">Ora Part.</th>
+                    <th className="p-3 text-center">Fermate</th>
+                    <th className="p-3 text-right">Pallet</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {loading && data.length === 0 ? (
+                    <tr><td colSpan={9} className="p-12 text-center text-gray-400">
+                      <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50" />Caricamento...
+                    </td></tr>
+                  ) : groupedData.length === 0 ? (
+                    <tr><td colSpan={9} className="p-12 text-center text-gray-400">
+                      <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                      {data.length === 0
+                        ? (isGuest ? "In attesa che l'amministratore carichi i dati del turno." : "Carica un file Excel per iniziare.")
+                        : "Nessun risultato con i filtri attivi."}
+                    </td></tr>
+                  ) : (
+                    groupedData.map((group) => {
+                      const isExpanded = expandedBordero.has(group.bordero);
+                      return (
+                        <Fragment key={group.bordero}>
+                          {/* ── Riga raggruppata ── */}
+                          <tr
+                            onClick={() => toggleExpanded(group.bordero)}
+                            className={`cursor-pointer transition-colors select-none ${
+                              group.tuttePreparate ? "bg-emerald-900/10" : ""
+                            } ${
+                              isExpanded ? "bg-white/[0.03]" : "hover:bg-white/5"
+                            }`}
+                          >
+                            <td className="p-3 text-center">
+                              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+                                isExpanded ? "rotate-90" : ""
+                              }`} />
+                            </td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                group.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
+                                group.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
+                                group.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                                "bg-gray-500/20 text-gray-300 border border-gray-500/30"
+                              }`}>{group.stato || "N/A"}</span>
+                            </td>
+                            <td className="p-3 font-mono text-xs text-gray-300">{group.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</td>
+                            <td className="p-3 text-gray-300 text-xs">{group.name}</td>
+                            <td className="p-3 text-gray-400 text-xs">{group.data_arrivo_carico}</td>
+                            <td className="p-3 text-gray-400 text-xs">{group.data_consegna}</td>
+                            <td className="p-3 text-gray-400 text-xs">{group.ora_partenza}</td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <MapPin className="w-3 h-3 text-gray-500" />
+                                <span className="text-xs text-gray-300">{group.fermate.length}</span>
+                                <span className="text-[10px] text-gray-500">•</span>
+                                <span className={`text-[10px] font-semibold ${
+                                  group.tuttePreparate ? "text-emerald-400" :
+                                  group.pronteCount > 0 ? "text-amber-400" : "text-gray-500"
+                                }`}>
+                                  {group.pronteCount}/{group.fermate.length}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3 text-right font-bold text-white">{group.totalePallet % 1 === 0 ? group.totalePallet : group.totalePallet.toFixed(1)}</td>
+                          </tr>
+
+                          {/* ── Accordion: card fermate ── */}
+                          {isExpanded && (
+                            <tr>
+                              <td colSpan={9} className="p-0">
+                                <div className="accordion-content">
+                                  <div className="mx-4 my-3 rounded-xl glass-card border border-white/5 overflow-hidden">
+                                    {/* Header card */}
+                                    <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                                        <span className="text-xs font-semibold text-gray-200">
+                                          {group.fermate.length} {group.fermate.length === 1 ? "fermata" : "fermate"}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {/* Mini progress bar */}
+                                        <div className="w-20 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                          <div
+                                            className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-all duration-500"
+                                            style={{ width: `${group.fermate.length > 0 ? (group.pronteCount / group.fermate.length) * 100 : 0}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-[10px] text-gray-400">
+                                          {group.pronteCount}/{group.fermate.length} pronte
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {/* Fermate list */}
+                                    <div className="divide-y divide-white/[0.03]">
+                                      {group.fermate.map((fermata) => (
+                                        <div
+                                          key={fermata.id}
+                                          className={`flex items-center gap-4 px-4 py-2.5 transition-colors hover:bg-white/[0.02] ${
+                                            fermata.preparata ? "bg-emerald-900/[0.06]" : ""
+                                          }`}
+                                        >
+                                          {/* Checkbox pronta */}
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); togglePreparata(fermata.id, fermata.preparata); }}
+                                            disabled={isGuest}
+                                            className={`w-5 h-5 rounded flex items-center justify-center border transition-all shrink-0 ${
+                                              isGuest ? "cursor-not-allowed opacity-60" : ""
+                                            } ${
+                                              fermata.preparata
+                                                ? "bg-emerald-500 border-emerald-400 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                                                : "bg-black/20 border-gray-600 text-transparent" + (isGuest ? "" : " hover:border-gray-400")
+                                            }`}
+                                          >
+                                            <Check className="w-3 h-3" />
+                                          </button>
+                                          {/* Negozio */}
+                                          <div className="flex-1 min-w-0">
+                                            <div className="text-xs font-medium text-white truncate">{fermata.descrizione}</div>
+                                            <div className="text-[10px] text-gray-500">#{fermata.negozio}</div>
+                                          </div>
+                                          {/* Pallet */}
+                                          <div className="text-right shrink-0">
+                                            <span className="text-sm font-bold text-white">{fermata.totale}</span>
+                                            <span className="text-[10px] text-gray-500 ml-1">plt</span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
