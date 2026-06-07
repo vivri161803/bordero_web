@@ -73,3 +73,16 @@ body {
     transform: translateY(0);
   }
 }
+
+/* Highlight flash for timeline scroll-to */
+.bordero-highlight {
+  animation: bordero-flash 2s ease-out;
+}
+
+@keyframes bordero-flash {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  10% { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5), inset 0 0 12px rgba(59, 130, 246, 0.08); }
+  30% { box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2); }
+  50% { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4), inset 0 0 12px rgba(59, 130, 246, 0.06); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}

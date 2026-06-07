@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   Upload, FileSpreadsheet, Search, Filter, RefreshCw,
-  Download, Trash2, Check, ChevronDown, ChevronRight, X, TrendingUp, Package, LogOut,
-  Layers, List, MapPin
+  Download, Trash2, Check, ChevronDown, ChevronRight, ChevronUp, X, TrendingUp, Package, LogOut,
+  MapPin, CheckCheck, ChevronsUpDown, EyeOff, Eye, ArrowUpDown, ArrowUp, ArrowDown,
+  Clock, BarChart3
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -42,10 +43,27 @@ type GroupedBordero = {
   pronteCount: number;
 };
 
+type SortColumn = "stato" | "bordero" | "name" | "data_arrivo_carico" | "data_consegna" | "ora_partenza" | "fermate" | "pallet";
+type SortDir = "asc" | "desc";
+
 const CHART_COLORS = [
   "#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b",
   "#ef4444", "#ec4899", "#14b8a6", "#6366f1", "#f97316",
 ];
+
+/* ─── Highlight helper ─── */
+function HighlightText({ text, highlight }: { text: string; highlight: string }) {
+  if (!highlight || !text) return <>{text}</>;
+  const idx = text.toLowerCase().indexOf(highlight.toLowerCase());
+  if (idx === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-amber-400/30 text-amber-200 rounded-sm px-0.5">{text.slice(idx, idx + highlight.length)}</mark>
+      {text.slice(idx + highlight.length)}
+    </>
+  );
+}
 
 /* ─── DropdownFilter ─── */
 function DropdownFilter({
@@ -106,8 +124,13 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
   const [onlineGuests, setOnlineGuests] = useState(0);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
-  const [viewMode, setViewMode] = useState<"flat" | "grouped">("flat");
   const [expandedBordero, setExpandedBordero] = useState<Set<string>>(new Set());
+  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [hideCompleted, setHideCompleted] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [highlightedBordero, setHighlightedBordero] = useState<string | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   /* ─── Supabase ─── */
   useEffect(() => {
@@ -199,7 +222,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(row);
     });
-    const groups: GroupedBordero[] = [];
+    let groups: GroupedBordero[] = [];
     map.forEach((fermate, bordero) => {
       const first = fermate[0];
       const totalePallet = fermate.reduce((sum, f) => sum + (f.totale || 0), 0);
@@ -217,8 +240,47 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
         pronteCount,
       });
     });
+
+    // (6) Hide completed groups
+    if (hideCompleted) {
+      groups = groups.filter((g) => !g.tuttePreparate);
+    }
+
+    // (3) Sorting
+    if (sortColumn) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      groups.sort((a, b) => {
+        let cmp = 0;
+        switch (sortColumn) {
+          case "stato": cmp = (a.stato || "").localeCompare(b.stato || ""); break;
+          case "bordero": cmp = (a.bordero || "").localeCompare(b.bordero || ""); break;
+          case "name": cmp = (a.name || "").localeCompare(b.name || ""); break;
+          case "data_arrivo_carico": cmp = (a.data_arrivo_carico || "").localeCompare(b.data_arrivo_carico || ""); break;
+          case "data_consegna": cmp = (a.data_consegna || "").localeCompare(b.data_consegna || ""); break;
+          case "ora_partenza": cmp = (a.ora_partenza || "").localeCompare(b.ora_partenza || ""); break;
+          case "fermate": cmp = a.fermate.length - b.fermate.length; break;
+          case "pallet": cmp = a.totalePallet - b.totalePallet; break;
+        }
+        return cmp * dir;
+      });
+    }
+
     return groups;
-  }, [filteredData]);
+  }, [filteredData, sortColumn, sortDir, hideCompleted]);
+
+  const handleSort = (col: SortColumn) => {
+    if (sortColumn === col) {
+      setSortDir((d) => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortColumn(col);
+      setSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ col }: { col: SortColumn }) => {
+    if (sortColumn !== col) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+    return sortDir === "asc" ? <ArrowUp className="w-3 h-3 text-blue-400" /> : <ArrowDown className="w-3 h-3 text-blue-400" />;
+  };
 
   const toggleExpanded = (bordero: string) => {
     setExpandedBordero((prev) => {
@@ -228,6 +290,30 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
       return next;
     });
   };
+
+  const expandAll = () => setExpandedBordero(new Set(groupedData.map((g) => g.bordero)));
+  const collapseAll = () => setExpandedBordero(new Set());
+  const allExpanded = groupedData.length > 0 && expandedBordero.size >= groupedData.length;
+
+  /* ─── Scroll to borderò from timeline ─── */
+  const scrollToBordero = useCallback((bordero: string) => {
+    // Expand it first
+    setExpandedBordero((prev) => {
+      const next = new Set(prev);
+      next.add(bordero);
+      return next;
+    });
+    // Highlight + scroll after a tick (to let expand render)
+    setHighlightedBordero(bordero);
+    setTimeout(() => {
+      const el = document.querySelector(`[data-bordero="${CSS.escape(bordero)}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 80);
+    // Clear highlight after animation
+    setTimeout(() => setHighlightedBordero(null), 2500);
+  }, []);
 
   /* ─── Chart data ─── */
   const chartPalletPerVettore = useMemo(() => {
@@ -272,6 +358,15 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
     if (isGuest) return;
     setData(data.map((i) => (i.id === id ? { ...i, preparata: !cur } : i)));
     const { error } = await supabase.from("consegne").update({ preparata: !cur }).eq("id", id);
+    if (error) fetchData();
+  };
+
+  const toggleAllPreparate = async (fermate: Consegna[], setTo: boolean) => {
+    if (isGuest) return;
+    const ids = fermate.map((f) => f.id);
+    // Optimistic update
+    setData((prev) => prev.map((i) => ids.includes(i.id) ? { ...i, preparata: setTo } : i));
+    const { error } = await supabase.from("consegne").update({ preparata: setTo }).in("id", ids);
     if (error) fetchData();
   };
 
@@ -387,358 +482,645 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
               <DropdownFilter label="Data Consegna" options={uniqueDataConsegna} value={filterDataConsegna} onChange={setFilterDataConsegna} />
               <DropdownFilter label="Stato" options={uniqueStati} value={filterStato} onChange={setFilterStato} />
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2 text-[11px] text-gray-500">
                 <Filter className="w-3 h-3" />
-                {viewMode === "grouped"
-                  ? <>{groupedData.length} borderò ({filteredData.length} fermate totali)</>
-                  : <>{filteredData.length} di {data.length} righe</>}
+                <>{groupedData.length} borderò ({filteredData.length} fermate totali)</>
               </div>
-              <div className="flex items-center gap-1 bg-white/5 rounded-lg border border-white/10 p-0.5">
+              <div className="flex items-center gap-2">
+                {/* Toggle nascondi completate */}
                 <button
-                  onClick={() => setViewMode("flat")}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                    viewMode === "flat"
-                      ? "bg-blue-500/20 text-blue-300 shadow-sm"
-                      : "text-gray-400 hover:text-gray-200"
+                  onClick={() => setHideCompleted((h) => !h)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${
+                    hideCompleted
+                      ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                      : "bg-white/5 text-gray-400 border-white/10 hover:text-gray-200"
                   }`}
                 >
-                  <List className="w-3 h-3" /> Tutte le righe
+                  {hideCompleted ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  {hideCompleted ? "Mostra tutte" : "Solo da completare"}
                 </button>
-                <button
-                  onClick={() => setViewMode("grouped")}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                    viewMode === "grouped"
-                      ? "bg-blue-500/20 text-blue-300 shadow-sm"
-                      : "text-gray-400 hover:text-gray-200"
-                  }`}
-                >
-                  <Layers className="w-3 h-3" /> Per Borderò
-                </button>
+                {/* Expand/Collapse all */}
+                {groupedData.length > 0 && (
+                  <button
+                    onClick={allExpanded ? collapseAll : expandAll}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-white/5 text-gray-400 border border-white/10 hover:text-gray-200 transition-all"
+                  >
+                    <ChevronsUpDown className="w-3 h-3" />
+                    {allExpanded ? "Chiudi tutti" : "Espandi tutti"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
           {/* Tabella scrollabile */}
-          <div className="flex-1 overflow-auto">
-            {viewMode === "flat" ? (
-              /* ═══ VISTA PIATTA (originale) ═══ */
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-black/40 text-gray-300 uppercase font-semibold text-[11px] tracking-wider sticky top-0 z-10">
-                  <tr>
-                    <th className="p-3 w-14 text-center">Pronta</th>
-                    <th className="p-3">Stato</th>
-                    <th className="p-3">Borderò</th>
-                    <th className="p-3">Negozio</th>
-                    <th className="p-3">Vettore</th>
-                    <th className="p-3">Data Carico</th>
-                    <th className="p-3">Data Cons.</th>
-                    <th className="p-3">Ora Part.</th>
-                    <th className="p-3 text-right">Pallet</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {loading && data.length === 0 ? (
-                    <tr><td colSpan={9} className="p-12 text-center text-gray-400">
-                      <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50" />Caricamento...
-                    </td></tr>
-                  ) : filteredData.length === 0 ? (
-                    <tr><td colSpan={9} className="p-12 text-center text-gray-400">
-                      <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                      {data.length === 0 
-                        ? (isGuest ? "In attesa che l'amministratore carichi i dati del turno." : "Carica un file Excel per iniziare.") 
-                        : "Nessun risultato con i filtri attivi."}
-                    </td></tr>
-                  ) : (
-                    filteredData.map((row) => (
-                      <tr key={row.id} className={`hover:bg-white/5 transition-colors ${row.preparata ? "bg-emerald-900/10" : ""}`}>
+          <div className="flex-1 overflow-auto" ref={tableScrollRef}>
+              {/* ═══ VISTA RAGGRUPPATA PER BORDERÒ ═══ */}
+              <>
+                {/* ── Desktop table (hidden on mobile) ── */}
+                <table className="w-full text-left text-sm whitespace-nowrap hidden md:table">
+                  <thead className="bg-black/40 text-gray-300 uppercase font-semibold text-[11px] tracking-wider sticky top-0 z-10">
+                    <tr>
+                      <th className="p-3 w-10"></th>
+                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("stato")}>
+                        <span className="inline-flex items-center gap-1">Stato <SortIcon col="stato" /></span>
+                      </th>
+                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("bordero")}>
+                        <span className="inline-flex items-center gap-1">Borderò <SortIcon col="bordero" /></span>
+                      </th>
+                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("name")}>
+                        <span className="inline-flex items-center gap-1">Vettore <SortIcon col="name" /></span>
+                      </th>
+                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("data_arrivo_carico")}>
+                        <span className="inline-flex items-center gap-1">Data Carico <SortIcon col="data_arrivo_carico" /></span>
+                      </th>
+                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("data_consegna")}>
+                        <span className="inline-flex items-center gap-1">Data Cons. <SortIcon col="data_consegna" /></span>
+                      </th>
+                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("ora_partenza")}>
+                        <span className="inline-flex items-center gap-1">Ora Part. <SortIcon col="ora_partenza" /></span>
+                      </th>
+                      <th className="p-3 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("fermate")}>
+                        <span className="inline-flex items-center gap-1">Fermate <SortIcon col="fermate" /></span>
+                      </th>
+                      <th className="p-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("pallet")}>
+                        <span className="inline-flex items-center gap-1 justify-end">Pallet <SortIcon col="pallet" /></span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {loading && data.length === 0 ? (
+                      <tr><td colSpan={9} className="p-12 text-center text-gray-400">
+                        <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50" />Caricamento...
+                      </td></tr>
+                    ) : groupedData.length === 0 ? (
+                      <tr><td colSpan={9} className="p-12 text-center text-gray-400">
+                        <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                        {data.length === 0
+                          ? (isGuest ? "In attesa che l'amministratore carichi i dati del turno." : "Carica un file Excel per iniziare.")
+                          : hideCompleted ? "Tutte le corse sono completate! 🎉" : "Nessun risultato con i filtri attivi."}
+                      </td></tr>
+                    ) : (
+                      groupedData.map((group) => {
+                        const isExpanded = expandedBordero.has(group.bordero);
+                        return (
+                          <Fragment key={group.bordero}>
+                            {/* ── Riga raggruppata ── */}
+                            <tr
+                              data-bordero={group.bordero}
+                              onClick={() => toggleExpanded(group.bordero)}
+                              className={`cursor-pointer transition-all select-none ${
+                                group.tuttePreparate ? "bg-emerald-900/10" : ""
+                              } ${
+                                isExpanded ? "bg-white/[0.03]" : "hover:bg-white/5"
+                              } ${
+                                highlightedBordero === group.bordero ? "bordero-highlight" : ""
+                              }`}
+                            >
+                              <td className="p-3 text-center">
+                                <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+                                  isExpanded ? "rotate-90" : ""
+                                }`} />
+                              </td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  group.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
+                                  group.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
+                                  group.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                                  "bg-gray-500/20 text-gray-300 border border-gray-500/30"
+                                }`}>{group.stato || "N/A"}</span>
+                              </td>
+                              <td className="p-3 font-mono text-xs text-gray-300">{group.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</td>
+                              <td className="p-3 text-gray-300 text-xs">{group.name}</td>
+                              <td className="p-3 text-gray-400 text-xs">{group.data_arrivo_carico}</td>
+                              <td className="p-3 text-gray-400 text-xs">{group.data_consegna}</td>
+                              <td className="p-3 text-gray-400 text-xs">{group.ora_partenza}</td>
+                              <td className="p-3 text-center">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <MapPin className="w-3 h-3 text-gray-500" />
+                                  <span className="text-xs text-gray-300">{group.fermate.length}</span>
+                                  <span className="text-[10px] text-gray-500">•</span>
+                                  <span className={`text-[10px] font-semibold ${
+                                    group.tuttePreparate ? "text-emerald-400" :
+                                    group.pronteCount > 0 ? "text-amber-400" : "text-gray-500"
+                                  }`}>
+                                    {group.pronteCount}/{group.fermate.length}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-3 text-right font-bold text-white">{group.totalePallet % 1 === 0 ? group.totalePallet : group.totalePallet.toFixed(1)}</td>
+                            </tr>
+
+                            {/* ── Accordion: card fermate ── */}
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={9} className="p-0">
+                                  <div className="accordion-content">
+                                    <div className="mx-4 my-3 rounded-xl glass-card border border-white/5 overflow-hidden">
+                                      {/* Header card */}
+                                      <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                                          <span className="text-xs font-semibold text-gray-200">
+                                            {group.fermate.length} {group.fermate.length === 1 ? "fermata" : "fermate"}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                          {/* Mini progress bar */}
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-20 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                              <div
+                                                className={`h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-[width] duration-500 ${
+                                                  group.pronteCount === 0 ? "opacity-0" : "opacity-100"
+                                                }`}
+                                                style={{ width: `${group.fermate.length > 0 ? (group.pronteCount / group.fermate.length) * 100 : 0}%` }}
+                                              />
+                                            </div>
+                                            <span className="text-[10px] text-gray-400">
+                                              {group.pronteCount}/{group.fermate.length} pronte
+                                            </span>
+                                          </div>
+                                          {/* (1) Segna tutto pronto / deseleziona */}
+                                          {!isGuest && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); toggleAllPreparate(group.fermate, !group.tuttePreparate); }}
+                                              className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                                                group.tuttePreparate
+                                                  ? "bg-gray-500/15 text-gray-400 hover:bg-gray-500/25 border border-gray-500/20"
+                                                  : "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/20"
+                                              }`}
+                                            >
+                                              <CheckCheck className="w-3 h-3" />
+                                              {group.tuttePreparate ? "Deseleziona tutto" : "Segna tutto pronto"}
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {/* Fermate list */}
+                                      <div className="divide-y divide-white/[0.03]">
+                                        {group.fermate.map((fermata) => {
+                                          const isSearchMatch = searchTerm && (
+                                            fermata.descrizione?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                            String(fermata.negozio).includes(searchTerm)
+                                          );
+                                          return (
+                                            <div
+                                              key={fermata.id}
+                                              className={`flex items-center gap-4 px-4 py-2.5 transition-colors hover:bg-white/[0.02] ${
+                                                fermata.preparata ? "bg-emerald-900/[0.06]" : ""
+                                              } ${
+                                                isSearchMatch ? "ring-1 ring-inset ring-amber-400/30 bg-amber-900/[0.06]" : ""
+                                              }`}
+                                            >
+                                              {/* Checkbox pronta */}
+                                              <button
+                                                onClick={(e) => { e.stopPropagation(); togglePreparata(fermata.id, fermata.preparata); }}
+                                                disabled={isGuest}
+                                                className={`w-5 h-5 rounded flex items-center justify-center border transition-all shrink-0 ${
+                                                  isGuest ? "cursor-not-allowed opacity-60" : ""
+                                                } ${
+                                                  fermata.preparata
+                                                    ? "bg-emerald-500 border-emerald-400 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                                                    : "bg-black/20 border-gray-600 text-transparent" + (isGuest ? "" : " hover:border-gray-400")
+                                                }`}
+                                              >
+                                                <Check className="w-3 h-3" />
+                                              </button>
+                                              {/* Negozio (5: with highlight) */}
+                                              <div className="flex-1 min-w-0">
+                                                <div className="text-xs font-medium text-white truncate">
+                                                  <HighlightText text={fermata.descrizione} highlight={searchTerm} />
+                                                </div>
+                                                <div className="text-[10px] text-gray-500">#{fermata.negozio}</div>
+                                              </div>
+                                              {/* Pallet */}
+                                              <div className="text-right shrink-0">
+                                                <span className="text-sm font-bold text-white">{fermata.totale}</span>
+                                                <span className="text-[10px] text-gray-500 ml-1">plt</span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  {/* (9) Footer totale */}
+                  {groupedData.length > 0 && (
+                    <tfoot className="bg-black/30 border-t border-white/10 sticky bottom-0">
+                      <tr>
+                        <td className="p-3" colSpan={7}>
+                          <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">
+                            Totale {groupedData.length} borderò
+                          </span>
+                        </td>
                         <td className="p-3 text-center">
-                          <button onClick={() => togglePreparata(row.id, row.preparata)}
-                            disabled={isGuest}
-                            className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${
-                              isGuest ? "cursor-not-allowed opacity-60" : ""
-                            } ${
-                              row.preparata
-                                ? "bg-emerald-500 border-emerald-400 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]"
-                                : "bg-black/20 border-gray-600 text-transparent" + (isGuest ? "" : " hover:border-gray-400")
-                            }`}>
-                            <Check className="w-3 h-3" />
-                          </button>
+                          <span className="text-xs font-semibold text-gray-300">
+                            {groupedData.reduce((s, g) => s + g.fermate.length, 0)} fermate
+                          </span>
                         </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            row.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
-                            row.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
-                            row.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
-                            "bg-gray-500/20 text-gray-300 border border-gray-500/30"
-                          }`}>{row.stato || "N/A"}</span>
+                        <td className="p-3 text-right">
+                          <span className="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+                            {(() => { const t = groupedData.reduce((s, g) => s + g.totalePallet, 0); return t % 1 === 0 ? t : t.toFixed(1); })()}
+                          </span>
+                          <span className="text-[10px] text-gray-500 ml-1">plt</span>
                         </td>
-                        <td className="p-3 font-mono text-xs text-gray-300">{row.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</td>
-                        <td className="p-3">
-                          <div className="font-medium text-white text-xs">{row.descrizione}</div>
-                          <div className="text-[10px] text-gray-500">#{row.negozio}</div>
-                        </td>
-                        <td className="p-3 text-gray-300 text-xs">{row.name}</td>
-                        <td className="p-3 text-gray-400 text-xs">{row.data_arrivo_carico}</td>
-                        <td className="p-3 text-gray-400 text-xs">{row.data_consegna}</td>
-                        <td className="p-3 text-gray-400 text-xs">{row.ora_partenza}</td>
-                        <td className="p-3 text-right font-bold text-white">{row.totale}</td>
                       </tr>
-                    ))
+                    </tfoot>
                   )}
-                </tbody>
-              </table>
-            ) : (
-              /* ═══ VISTA RAGGRUPPATA PER BORDERÒ ═══ */
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-black/40 text-gray-300 uppercase font-semibold text-[11px] tracking-wider sticky top-0 z-10">
-                  <tr>
-                    <th className="p-3 w-10"></th>
-                    <th className="p-3">Stato</th>
-                    <th className="p-3">Borderò</th>
-                    <th className="p-3">Vettore</th>
-                    <th className="p-3">Data Carico</th>
-                    <th className="p-3">Data Cons.</th>
-                    <th className="p-3">Ora Part.</th>
-                    <th className="p-3 text-center">Fermate</th>
-                    <th className="p-3 text-right">Pallet</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
+                </table>
+
+                {/* ── (7) Mobile card layout ── */}
+                <div className="md:hidden space-y-2 p-3">
                   {loading && data.length === 0 ? (
-                    <tr><td colSpan={9} className="p-12 text-center text-gray-400">
+                    <div className="p-12 text-center text-gray-400">
                       <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50" />Caricamento...
-                    </td></tr>
+                    </div>
                   ) : groupedData.length === 0 ? (
-                    <tr><td colSpan={9} className="p-12 text-center text-gray-400">
+                    <div className="p-12 text-center text-gray-400">
                       <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
                       {data.length === 0
                         ? (isGuest ? "In attesa che l'amministratore carichi i dati del turno." : "Carica un file Excel per iniziare.")
-                        : "Nessun risultato con i filtri attivi."}
-                    </td></tr>
+                        : hideCompleted ? "Tutte le corse sono completate! 🎉" : "Nessun risultato con i filtri attivi."}
+                    </div>
                   ) : (
-                    groupedData.map((group) => {
-                      const isExpanded = expandedBordero.has(group.bordero);
-                      return (
-                        <Fragment key={group.bordero}>
-                          {/* ── Riga raggruppata ── */}
-                          <tr
-                            onClick={() => toggleExpanded(group.bordero)}
-                            className={`cursor-pointer transition-colors select-none ${
-                              group.tuttePreparate ? "bg-emerald-900/10" : ""
-                            } ${
-                              isExpanded ? "bg-white/[0.03]" : "hover:bg-white/5"
-                            }`}
-                          >
-                            <td className="p-3 text-center">
-                              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+                    <>
+                      {groupedData.map((group) => {
+                        const isExpanded = expandedBordero.has(group.bordero);
+                        return (
+                          <div key={group.bordero} data-bordero={group.bordero} className={`rounded-xl border overflow-hidden transition-all ${
+                            group.tuttePreparate ? "border-emerald-500/20 bg-emerald-900/[0.06]" : "border-white/5 glass-card"
+                          } ${
+                            highlightedBordero === group.bordero ? "bordero-highlight" : ""
+                          }`}>
+                            {/* Card header */}
+                            <button
+                              onClick={() => toggleExpanded(group.bordero)}
+                              className="w-full flex items-center gap-3 p-3 text-left"
+                            >
+                              <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform duration-200 shrink-0 ${
                                 isExpanded ? "rotate-90" : ""
                               }`} />
-                            </td>
-                            <td className="p-3">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                group.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
-                                group.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
-                                group.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
-                                "bg-gray-500/20 text-gray-300 border border-gray-500/30"
-                              }`}>{group.stato || "N/A"}</span>
-                            </td>
-                            <td className="p-3 font-mono text-xs text-gray-300">{group.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</td>
-                            <td className="p-3 text-gray-300 text-xs">{group.name}</td>
-                            <td className="p-3 text-gray-400 text-xs">{group.data_arrivo_carico}</td>
-                            <td className="p-3 text-gray-400 text-xs">{group.data_consegna}</td>
-                            <td className="p-3 text-gray-400 text-xs">{group.ora_partenza}</td>
-                            <td className="p-3 text-center">
-                              <div className="flex items-center justify-center gap-1.5">
-                                <MapPin className="w-3 h-3 text-gray-500" />
-                                <span className="text-xs text-gray-300">{group.fermate.length}</span>
-                                <span className="text-[10px] text-gray-500">•</span>
-                                <span className={`text-[10px] font-semibold ${
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    group.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
+                                    group.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
+                                    group.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                                    "bg-gray-500/20 text-gray-300 border border-gray-500/30"
+                                  }`}>{group.stato || "N/A"}</span>
+                                  <span className="text-xs text-gray-300 font-mono truncate">{group.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</span>
+                                </div>
+                                <div className="text-[11px] text-gray-400 truncate">{group.name}</div>
+                                <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500">
+                                  <span>{group.data_consegna}</span>
+                                  <span>{group.ora_partenza}</span>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-lg font-bold text-white">{group.totalePallet % 1 === 0 ? group.totalePallet : group.totalePallet.toFixed(1)}</div>
+                                <div className="text-[10px] text-gray-500">pallet</div>
+                                <div className={`text-[10px] font-semibold mt-0.5 ${
                                   group.tuttePreparate ? "text-emerald-400" :
                                   group.pronteCount > 0 ? "text-amber-400" : "text-gray-500"
                                 }`}>
-                                  {group.pronteCount}/{group.fermate.length}
-                                </span>
+                                  {group.pronteCount}/{group.fermate.length} pronte
+                                </div>
                               </div>
-                            </td>
-                            <td className="p-3 text-right font-bold text-white">{group.totalePallet % 1 === 0 ? group.totalePallet : group.totalePallet.toFixed(1)}</td>
-                          </tr>
-
-                          {/* ── Accordion: card fermate ── */}
-                          {isExpanded && (
-                            <tr>
-                              <td colSpan={9} className="p-0">
-                                <div className="accordion-content">
-                                  <div className="mx-4 my-3 rounded-xl glass-card border border-white/5 overflow-hidden">
-                                    {/* Header card */}
-                                    <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
-                                      <div className="flex items-center gap-2">
-                                        <MapPin className="w-3.5 h-3.5 text-blue-400" />
-                                        <span className="text-xs font-semibold text-gray-200">
-                                          {group.fermate.length} {group.fermate.length === 1 ? "fermata" : "fermate"}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        {/* Mini progress bar */}
-                                        <div className="w-20 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                                          <div
-                                            className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-all duration-500"
-                                            style={{ width: `${group.fermate.length > 0 ? (group.pronteCount / group.fermate.length) * 100 : 0}%` }}
-                                          />
-                                        </div>
-                                        <span className="text-[10px] text-gray-400">
-                                          {group.pronteCount}/{group.fermate.length} pronte
-                                        </span>
-                                      </div>
-                                    </div>
-                                    {/* Fermate list */}
-                                    <div className="divide-y divide-white/[0.03]">
-                                      {group.fermate.map((fermata) => (
-                                        <div
-                                          key={fermata.id}
-                                          className={`flex items-center gap-4 px-4 py-2.5 transition-colors hover:bg-white/[0.02] ${
-                                            fermata.preparata ? "bg-emerald-900/[0.06]" : ""
+                            </button>
+                            {/* Expanded fermate */}
+                            {isExpanded && (
+                              <div className="accordion-content border-t border-white/5">
+                                {/* Segna tutto pronto (mobile) */}
+                                {!isGuest && (
+                                  <div className="px-3 py-2 border-b border-white/5 flex justify-end">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); toggleAllPreparate(group.fermate, !group.tuttePreparate); }}
+                                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                                        group.tuttePreparate
+                                          ? "bg-gray-500/15 text-gray-400 border border-gray-500/20"
+                                          : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+                                      }`}
+                                    >
+                                      <CheckCheck className="w-3 h-3" />
+                                      {group.tuttePreparate ? "Deseleziona" : "Segna tutto"}
+                                    </button>
+                                  </div>
+                                )}
+                                <div className="divide-y divide-white/[0.03]">
+                                  {group.fermate.map((fermata) => {
+                                    const isSearchMatch = searchTerm && (
+                                      fermata.descrizione?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                      String(fermata.negozio).includes(searchTerm)
+                                    );
+                                    return (
+                                      <div
+                                        key={fermata.id}
+                                        className={`flex items-center gap-3 px-3 py-2.5 ${
+                                          fermata.preparata ? "bg-emerald-900/[0.06]" : ""
+                                        } ${
+                                          isSearchMatch ? "ring-1 ring-inset ring-amber-400/30 bg-amber-900/[0.06]" : ""
+                                        }`}
+                                      >
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); togglePreparata(fermata.id, fermata.preparata); }}
+                                          disabled={isGuest}
+                                          className={`w-5 h-5 rounded flex items-center justify-center border transition-all shrink-0 ${
+                                            isGuest ? "cursor-not-allowed opacity-60" : ""
+                                          } ${
+                                            fermata.preparata
+                                              ? "bg-emerald-500 border-emerald-400 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                                              : "bg-black/20 border-gray-600 text-transparent"
                                           }`}
                                         >
-                                          {/* Checkbox pronta */}
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); togglePreparata(fermata.id, fermata.preparata); }}
-                                            disabled={isGuest}
-                                            className={`w-5 h-5 rounded flex items-center justify-center border transition-all shrink-0 ${
-                                              isGuest ? "cursor-not-allowed opacity-60" : ""
-                                            } ${
-                                              fermata.preparata
-                                                ? "bg-emerald-500 border-emerald-400 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]"
-                                                : "bg-black/20 border-gray-600 text-transparent" + (isGuest ? "" : " hover:border-gray-400")
-                                            }`}
-                                          >
-                                            <Check className="w-3 h-3" />
-                                          </button>
-                                          {/* Negozio */}
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-medium text-white truncate">{fermata.descrizione}</div>
-                                            <div className="text-[10px] text-gray-500">#{fermata.negozio}</div>
+                                          <Check className="w-3 h-3" />
+                                        </button>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs font-medium text-white truncate">
+                                            <HighlightText text={fermata.descrizione} highlight={searchTerm} />
                                           </div>
-                                          {/* Pallet */}
-                                          <div className="text-right shrink-0">
-                                            <span className="text-sm font-bold text-white">{fermata.totale}</span>
-                                            <span className="text-[10px] text-gray-500 ml-1">plt</span>
-                                          </div>
+                                          <div className="text-[10px] text-gray-500">#{fermata.negozio}</div>
                                         </div>
-                                      ))}
-                                    </div>
-                                  </div>
+                                        <div className="text-right shrink-0">
+                                          <span className="text-sm font-bold text-white">{fermata.totale}</span>
+                                          <span className="text-[10px] text-gray-500 ml-1">plt</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {/* (9) Mobile footer totale */}
+                      <div className="glass-card rounded-xl p-3 border border-white/5 flex items-center justify-between">
+                        <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">
+                          Totale {groupedData.length} borderò · {groupedData.reduce((s, g) => s + g.fermate.length, 0)} fermate
+                        </span>
+                        <div>
+                          <span className="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+                            {(() => { const t = groupedData.reduce((s, g) => s + g.totalePallet, 0); return t % 1 === 0 ? t : t.toFixed(1); })()}
+                          </span>
+                          <span className="text-[10px] text-gray-500 ml-1">plt</span>
+                        </div>
+                      </div>
+                    </>
                   )}
-                </tbody>
-              </table>
-            )}
+                </div>
+              </>
           </div>
         </div>
 
-        {/* ════════ COLONNA DESTRA: statistiche + grafici ════════ */}
-        <aside className="hidden lg:block w-[340px] shrink-0 border-l border-white/5 bg-black/20 overflow-y-auto p-4 space-y-4">
+        {/* ════════ COLONNA DESTRA: bottone statistiche + timeline ════════ */}
+        <aside className="hidden lg:block w-[300px] shrink-0 border-l border-white/5 bg-black/20 overflow-y-auto p-4 space-y-4">
 
-          {/* Stat cards 2x2 */}
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Pallet" value={totPallet.toFixed(1)} color="bg-blue-500" />
-            <StatCard label="Viaggi" value={String(viaggiUnici)} color="bg-purple-500" />
-            <StatCard label="Righe" value={String(filteredData.length)} color="bg-cyan-500" />
-            <StatCard label="Pronte" value={`${prontePercent}%`} sub={`${pronteCount}/${filteredData.length}`} color="bg-emerald-500" />
+          {/* Bottone Statistiche */}
+          <button
+            onClick={() => setShowStatsModal(true)}
+            className="w-full glass-card hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-xl p-4 flex items-center gap-3 transition-all group"
+          >
+            <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <BarChart3 className="w-5 h-5 text-blue-400" />
+            </div>
+            <div className="text-left flex-1">
+              <div className="text-sm font-semibold text-white">Statistiche</div>
+              <div className="text-[10px] text-gray-500">Grafici e metriche in tempo reale</div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-gray-300 transition-colors" />
+          </button>
+
+          {/* Quick stats strip */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="glass-card rounded-lg p-2.5 border border-white/5 text-center">
+              <div className="text-lg font-bold text-white">{totPallet % 1 === 0 ? totPallet : totPallet.toFixed(1)}</div>
+              <div className="text-[9px] text-gray-500 uppercase tracking-wider font-semibold">Pallet</div>
+            </div>
+            <div className="glass-card rounded-lg p-2.5 border border-white/5 text-center">
+              <div className="text-lg font-bold text-white">{viaggiUnici}</div>
+              <div className="text-[9px] text-gray-500 uppercase tracking-wider font-semibold">Viaggi</div>
+            </div>
+            <div className="glass-card rounded-lg p-2.5 border border-white/5 text-center">
+              <div className={`text-lg font-bold ${prontePercent === 100 ? "text-emerald-400" : "text-white"}`}>{prontePercent}%</div>
+              <div className="text-[9px] text-gray-500 uppercase tracking-wider font-semibold">Pronte</div>
+            </div>
           </div>
 
-          {/* Avanzamento barra */}
-          <div className="glass-card p-4 rounded-xl border border-white/5">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> Avanzamento
-              </h3>
-              <span className="text-xs text-emerald-400 font-bold">{prontePercent}%</span>
-            </div>
-            <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-all duration-700 ease-out"
-                style={{ width: `${prontePercent}%` }} />
-            </div>
+          {/* Progress bar mini */}
+          <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div className={`h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-[width] duration-700 ease-out ${
+              prontePercent === 0 ? "opacity-0" : "opacity-100"
+            }`}
+              style={{ width: `${prontePercent}%` }} />
           </div>
 
-          {/* Chart: Pallet per Vettore */}
-          {filteredData.length > 0 && (
-            <>
-              <div className="glass-card p-4 rounded-xl border border-white/5">
-                <h3 className="text-xs font-semibold text-gray-300 mb-3">📦 Pallet per Vettore</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={chartPalletPerVettore} layout="vertical" margin={{ left: -10, right: 5 }}>
-                    <XAxis type="number" tick={{ fill: "#9ca3af", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis dataKey="name" type="category" width={100} tick={{ fill: "#d1d5db", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#fff", fontSize: 12 }} itemStyle={{ color: "#3b82f6" }} />
-                    <Bar dataKey="pallet" radius={[0, 4, 4, 0]} fill="url(#barGradient)" />
-                    <defs>
-                      <linearGradient id="barGradient" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="#3b82f6" />
-                        <stop offset="100%" stopColor="#06b6d4" />
-                      </linearGradient>
-                    </defs>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+          {/* Timeline: Partenze ordinate */}
+          {groupedData.length > 0 && (() => {
+            const timelineEntries = [...groupedData]
+              .filter((g) => g.ora_partenza)
+              .sort((a, b) => (a.ora_partenza || "").localeCompare(b.ora_partenza || ""));
 
-              {/* Pie: Stato */}
-              <div className="glass-card p-4 rounded-xl border border-white/5">
-                <h3 className="text-xs font-semibold text-gray-300 mb-3">🔖 Distribuzione Stato</h3>
-                <ResponsiveContainer width="100%" height={170}>
-                  <PieChart>
-                    <Pie data={chartStatoPie} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={4} dataKey="value" stroke="none">
-                      {chartStatoPie.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                    </Pie>
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "#d1d5db" }} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#fff" }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+            if (timelineEntries.length === 0) return null;
 
-              {/* Pie: Preparazione */}
-              <div className="glass-card p-4 rounded-xl border border-white/5">
-                <h3 className="text-xs font-semibold text-gray-300 mb-3">✅ Preparazione</h3>
-                <ResponsiveContainer width="100%" height={170}>
-                  <PieChart>
-                    <Pie data={chartPreparataPie} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={4} dataKey="value" stroke="none">
-                      <Cell fill="#10b981" />
-                      <Cell fill="#374151" />
-                    </Pie>
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "#d1d5db" }} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#fff" }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+            const timeSlots = [...new Set(timelineEntries.map((g) => g.ora_partenza))];
 
-              {/* Bar: Pallet per Data Consegna */}
+            return (
               <div className="glass-card p-4 rounded-xl border border-white/5">
-                <h3 className="text-xs font-semibold text-gray-300 mb-3">📅 Pallet per Data Consegna</h3>
-                <ResponsiveContainer width="100%" height={160}>
-                  <BarChart data={chartPalletPerData} margin={{ left: -10, right: 5 }}>
-                    <XAxis dataKey="data" tick={{ fill: "#9ca3af", fontSize: 9 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#fff", fontSize: 12 }} itemStyle={{ color: "#8b5cf6" }} />
-                    <Bar dataKey="pallet" radius={[4, 4, 0, 0]} fill="url(#barGradient2)" />
-                    <defs>
-                      <linearGradient id="barGradient2" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#8b5cf6" />
-                        <stop offset="100%" stopColor="#6366f1" />
-                      </linearGradient>
-                    </defs>
-                  </BarChart>
-                </ResponsiveContainer>
+                <h3 className="text-xs font-semibold text-gray-300 mb-3 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-blue-400" /> Timeline Partenze
+                </h3>
+                <div className="relative">
+                  <div className="absolute left-[7px] top-2 bottom-2 w-px bg-white/10" />
+                  <div className="space-y-1">
+                    {timeSlots.map((time) => {
+                      const entries = timelineEntries.filter((g) => g.ora_partenza === time);
+                      return (
+                        <div key={time} className="relative">
+                          <div className="flex items-center gap-2.5 py-1.5">
+                            <div className="w-[15px] h-[15px] rounded-full bg-blue-500/20 border-2 border-blue-400 flex items-center justify-center z-10 shrink-0">
+                              <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                            </div>
+                            <span className="text-[11px] font-bold text-white font-mono">{time}</span>
+                          </div>
+                          <div className="ml-[22px] space-y-1 pb-1">
+                            {entries.map((entry) => {
+                              const pct = entry.fermate.length > 0 ? Math.round((entry.pronteCount / entry.fermate.length) * 100) : 0;
+                              return (
+                                <div key={entry.bordero}
+                                  onClick={() => scrollToBordero(entry.bordero)}
+                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer hover:ring-1 hover:ring-blue-400/30 ${
+                                  entry.tuttePreparate ? "bg-emerald-900/15 border border-emerald-500/15" : "bg-white/[0.03] border border-white/5"
+                                }`}>
+                                  <div className={`w-2 h-2 rounded-full shrink-0 ${
+                                    entry.tuttePreparate ? "bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]" :
+                                    entry.pronteCount > 0 ? "bg-amber-400" : "bg-gray-500"
+                                  }`} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[11px] text-gray-200 font-medium truncate">{entry.name}</div>
+                                    <div className="text-[9px] text-gray-500 truncate">
+                                      {entry.fermate.length} fermate · {entry.totalePallet % 1 === 0 ? entry.totalePallet : entry.totalePallet.toFixed(1)} plt
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <div className="w-10 h-1 bg-white/5 rounded-full overflow-hidden">
+                                      <div className={`h-full rounded-full ${
+                                        entry.tuttePreparate ? "bg-emerald-400" :
+                                        entry.pronteCount > 0 ? "bg-amber-400" : ""
+                                      }`} style={{ width: `${pct}%` }} />
+                                    </div>
+                                    <span className="text-[9px] text-gray-500 w-7 text-right">{pct}%</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-            </>
-          )}
+            );
+          })()}
         </aside>
       </div>
+
+      {/* ── STATISTICHE MODAL ── */}
+      {showStatsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowStatsModal(false)}>
+          <div className="w-full max-w-4xl max-h-[90vh] glass rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Modal header */}
+            <div className="shrink-0 px-6 py-4 border-b border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                  <BarChart3 className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Statistiche</h2>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Dashboard dati filtrati in tempo reale</p>
+                </div>
+              </div>
+              <button onClick={() => setShowStatsModal(false)}
+                className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center transition-colors">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Stat cards row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard label="Pallet Totali" value={totPallet % 1 === 0 ? String(totPallet) : totPallet.toFixed(1)} color="bg-blue-500" />
+                <StatCard label="Viaggi Unici" value={String(viaggiUnici)} color="bg-purple-500" />
+                <StatCard label="Righe Filtrate" value={String(filteredData.length)} color="bg-cyan-500" />
+                <StatCard label="Pronte" value={`${prontePercent}%`} sub={`${pronteCount}/${filteredData.length}`} color="bg-emerald-500" />
+              </div>
+
+              {/* Avanzamento */}
+              <div className="glass-card p-4 rounded-xl border border-white/5">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> Avanzamento Preparazione
+                  </h3>
+                  <span className="text-xs text-emerald-400 font-bold">{prontePercent}%</span>
+                </div>
+                <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
+                  <div className={`h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-[width] duration-700 ease-out ${
+                    prontePercent === 0 ? "opacity-0" : "opacity-100"
+                  }`}
+                    style={{ width: `${prontePercent}%` }} />
+                </div>
+              </div>
+
+              {filteredData.length > 0 && (
+                <>
+                  {/* Charts grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Bar: Pallet per Vettore */}
+                    <div className="glass-card p-4 rounded-xl border border-white/5">
+                      <h3 className="text-xs font-semibold text-gray-300 mb-3">📦 Pallet per Vettore</h3>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <BarChart data={chartPalletPerVettore} layout="vertical" margin={{ left: -10, right: 5 }}>
+                          <XAxis type="number" tick={{ fill: "#9ca3af", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <YAxis dataKey="name" type="category" width={100} tick={{ fill: "#d1d5db", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#fff", fontSize: 12 }} itemStyle={{ color: "#3b82f6" }} />
+                          <Bar dataKey="pallet" radius={[0, 4, 4, 0]} fill="url(#barGradientModal)" />
+                          <defs>
+                            <linearGradient id="barGradientModal" x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="0%" stopColor="#3b82f6" />
+                              <stop offset="100%" stopColor="#06b6d4" />
+                            </linearGradient>
+                          </defs>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Bar: Pallet per Data Consegna */}
+                    <div className="glass-card p-4 rounded-xl border border-white/5">
+                      <h3 className="text-xs font-semibold text-gray-300 mb-3">📅 Pallet per Data Consegna</h3>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <BarChart data={chartPalletPerData} margin={{ left: -10, right: 5 }}>
+                          <XAxis dataKey="data" tick={{ fill: "#9ca3af", fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#fff", fontSize: 12 }} itemStyle={{ color: "#8b5cf6" }} />
+                          <Bar dataKey="pallet" radius={[4, 4, 0, 0]} fill="url(#barGradient2Modal)" />
+                          <defs>
+                            <linearGradient id="barGradient2Modal" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#8b5cf6" />
+                              <stop offset="100%" stopColor="#6366f1" />
+                            </linearGradient>
+                          </defs>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Pie charts row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Pie: Distribuzione Stato */}
+                    <div className="glass-card p-4 rounded-xl border border-white/5">
+                      <h3 className="text-xs font-semibold text-gray-300 mb-3">🔖 Distribuzione Stato</h3>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <PieChart>
+                          <Pie data={chartStatoPie} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={4} dataKey="value" stroke="none">
+                            {chartStatoPie.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                          </Pie>
+                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "#d1d5db" }} />
+                          <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#fff" }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Pie: Preparazione */}
+                    <div className="glass-card p-4 rounded-xl border border-white/5">
+                      <h3 className="text-xs font-semibold text-gray-300 mb-3">✅ Preparazione</h3>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <PieChart>
+                          <Pie data={chartPreparataPie} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={4} dataKey="value" stroke="none">
+                            <Cell fill="#10b981" />
+                            <Cell fill="#374151" />
+                          </Pie>
+                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "#d1d5db" }} />
+                          <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#fff" }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── CUSTOM CONFIRM RESET MODAL ── */}
       {showResetModal && (
