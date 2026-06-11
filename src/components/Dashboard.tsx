@@ -65,30 +65,134 @@ function HighlightText({ text, highlight }: { text: string; highlight: string })
   );
 }
 
-/* ─── DropdownFilter ─── */
-function DropdownFilter({
-  label, options, value, onChange,
+/* ─── MultiSelectFilter ─── */
+function MultiSelectFilter({
+  label, options, selected, onChange,
 }: {
-  label: string; options: string[]; value: string; onChange: (v: string) => void;
+  label: string; options: string[]; selected: Set<string>; onChange: (v: Set<string>) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    if (open) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const filtered = search
+    ? options.filter((o) => o.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  const toggle = (opt: string) => {
+    const next = new Set(selected);
+    if (next.has(opt)) next.delete(opt);
+    else next.add(opt);
+    onChange(next);
+  };
+
+  const selectAll = () => onChange(new Set(options));
+  const deselectAll = () => onChange(new Set());
+
+  const hasSelection = selected.size > 0;
+
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <label className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1 font-semibold">
         {label}
       </label>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none bg-white/5 border border-white/10 rounded-lg pl-3 pr-8 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer hover:bg-white/10 transition-colors"
-        >
-          <option value="" className="bg-[#1e2128]">Tutti</option>
-          {options.map((opt) => (
-            <option key={opt} value={opt} className="bg-[#1e2128]">{opt}</option>
-          ))}
-        </select>
-        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-      </div>
+      <button
+        type="button"
+        onClick={() => { setOpen(!open); setSearch(""); }}
+        className={`w-full flex items-center justify-between bg-white/5 border rounded-lg pl-3 pr-2 py-1.5 text-xs text-left cursor-pointer hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+          hasSelection ? "border-blue-500/40 bg-blue-500/[0.07]" : "border-white/10"
+        }`}
+      >
+        <span className={hasSelection ? "text-blue-300" : "text-white"}>
+          {hasSelection ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Tutti"}
+        </span>
+        <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${
+          open ? "rotate-180 text-blue-400" : "text-gray-400"
+        }`} />
+      </button>
+
+      {open && (
+        <div className="multiselect-dropdown absolute z-30 top-full mt-1 left-0 w-full min-w-[200px] bg-[#1e2128] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+          {/* Search */}
+          {options.length > 5 && (
+            <div className="p-2 border-b border-white/5">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Cerca..."
+                  className="w-full bg-white/5 border border-white/10 rounded-md pl-7 pr-2 py-1 text-[11px] text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+            </div>
+          )}
+          {/* Select All / Deselect All */}
+          {!search && (
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-white/5">
+              <button
+                type="button"
+                onClick={selectAll}
+                className="text-[10px] text-blue-400 hover:text-blue-300 px-1.5 py-0.5 rounded hover:bg-white/5 transition-colors"
+              >
+                Seleziona tutti
+              </button>
+              <span className="text-white/10">•</span>
+              <button
+                type="button"
+                onClick={deselectAll}
+                className="text-[10px] text-gray-400 hover:text-gray-300 px-1.5 py-0.5 rounded hover:bg-white/5 transition-colors"
+              >
+                Deseleziona
+              </button>
+            </div>
+          )}
+          {/* Options list */}
+          <div className="max-h-[200px] overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-gray-500 text-center">Nessun risultato</div>
+            ) : (
+              filtered.map((opt) => {
+                const isSelected = selected.has(opt);
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => toggle(opt)}
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors ${
+                      isSelected
+                        ? "text-blue-300 bg-blue-500/[0.08]"
+                        : "text-gray-300 hover:bg-white/5"
+                    }`}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-all shrink-0 ${
+                      isSelected
+                        ? "bg-blue-500 border-blue-400"
+                        : "bg-white/5 border-gray-600"
+                    }`}>
+                      {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
+                    </div>
+                    <span className="truncate">{opt}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -115,11 +219,11 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
   const [searchTerm, setSearchTerm] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [filterNegozio, setFilterNegozio] = useState("");
-  const [filterVettore, setFilterVettore] = useState("");
-  const [filterDataCarico, setFilterDataCarico] = useState("");
-  const [filterDataConsegna, setFilterDataConsegna] = useState("");
-  const [filterStato, setFilterStato] = useState("");
+  const [filterNegozio, setFilterNegozio] = useState<Set<string>>(new Set());
+  const [filterVettore, setFilterVettore] = useState<Set<string>>(new Set());
+  const [filterDataCarico, setFilterDataCarico] = useState<Set<string>>(new Set());
+  const [filterDataConsegna, setFilterDataConsegna] = useState<Set<string>>(new Set());
+  const [filterStato, setFilterStato] = useState<Set<string>>(new Set());
   const [onlineAdmins, setOnlineAdmins] = useState(0);
   const [onlineGuests, setOnlineGuests] = useState(0);
   const [showResetModal, setShowResetModal] = useState(false);
@@ -129,7 +233,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [hideCompleted, setHideCompleted] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
-  const [highlightedBordero, setHighlightedBordero] = useState<string | null>(null);
+  const [timelineFilterBorderos, setTimelineFilterBorderos] = useState<Set<string> | null>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
   /* ─── Supabase ─── */
@@ -202,17 +306,29 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
         item.descrizione?.toLowerCase().includes(s) ||
         item.name?.toLowerCase().includes(s) ||
         String(item.negozio).includes(searchTerm);
-      const matchNegozio = !filterNegozio || `${item.negozio} – ${item.descrizione}` === filterNegozio;
-      const matchVettore = !filterVettore || item.name === filterVettore;
-      const matchDataCarico = !filterDataCarico || item.data_arrivo_carico === filterDataCarico;
-      const matchDataConsegna = !filterDataConsegna || item.data_consegna === filterDataConsegna;
-      const matchStato = !filterStato || item.stato === filterStato;
-      return matchSearch && matchNegozio && matchVettore && matchDataCarico && matchDataConsegna && matchStato;
+      const matchNegozio = filterNegozio.size === 0 || filterNegozio.has(`${item.negozio} – ${item.descrizione}`);
+      const matchVettore = filterVettore.size === 0 || filterVettore.has(item.name);
+      const matchDataCarico = filterDataCarico.size === 0 || filterDataCarico.has(item.data_arrivo_carico);
+      const matchDataConsegna = filterDataConsegna.size === 0 || filterDataConsegna.has(item.data_consegna);
+      const matchStato = filterStato.size === 0 || filterStato.has(item.stato);
+      const matchTimeline = !timelineFilterBorderos || timelineFilterBorderos.has(item.bordero);
+      return matchSearch && matchNegozio && matchVettore && matchDataCarico && matchDataConsegna && matchStato && matchTimeline;
     });
-  }, [data, searchTerm, filterNegozio, filterVettore, filterDataCarico, filterDataConsegna, filterStato]);
+  }, [data, searchTerm, filterNegozio, filterVettore, filterDataCarico, filterDataConsegna, filterStato, timelineFilterBorderos]);
 
-  const activeFilterCount = [filterNegozio, filterVettore, filterDataCarico, filterDataConsegna, filterStato].filter(Boolean).length;
-  const clearAllFilters = () => { setSearchTerm(""); setFilterNegozio(""); setFilterVettore(""); setFilterDataCarico(""); setFilterDataConsegna(""); setFilterStato(""); };
+  const activeFilterCount = filterNegozio.size + filterVettore.size + filterDataCarico.size + filterDataConsegna.size + filterStato.size + (timelineFilterBorderos ? 1 : 0);
+  const clearAllFilters = () => { setSearchTerm(""); setFilterNegozio(new Set()); setFilterVettore(new Set()); setFilterDataCarico(new Set()); setFilterDataConsegna(new Set()); setFilterStato(new Set()); setTimelineFilterBorderos(null); };
+
+  /* ─── Active filter tags helper ─── */
+  const activeFilterTags = useMemo(() => {
+    const tags: { label: string; value: string; onRemove: () => void }[] = [];
+    filterNegozio.forEach((v) => tags.push({ label: "Negozio", value: v, onRemove: () => setFilterNegozio((prev) => { const n = new Set(prev); n.delete(v); return n; }) }));
+    filterVettore.forEach((v) => tags.push({ label: "Vettore", value: v, onRemove: () => setFilterVettore((prev) => { const n = new Set(prev); n.delete(v); return n; }) }));
+    filterDataCarico.forEach((v) => tags.push({ label: "Data Carico", value: v, onRemove: () => setFilterDataCarico((prev) => { const n = new Set(prev); n.delete(v); return n; }) }));
+    filterDataConsegna.forEach((v) => tags.push({ label: "Data Cons.", value: v, onRemove: () => setFilterDataConsegna((prev) => { const n = new Set(prev); n.delete(v); return n; }) }));
+    filterStato.forEach((v) => tags.push({ label: "Stato", value: v, onRemove: () => setFilterStato((prev) => { const n = new Set(prev); n.delete(v); return n; }) }));
+    return tags;
+  }, [filterNegozio, filterVettore, filterDataCarico, filterDataConsegna, filterStato]);
 
   /* ─── Grouped data ─── */
   const groupedData = useMemo(() => {
@@ -295,24 +411,17 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
   const collapseAll = () => setExpandedBordero(new Set());
   const allExpanded = groupedData.length > 0 && expandedBordero.size >= groupedData.length;
 
-  /* ─── Scroll to borderò from timeline ─── */
-  const scrollToBordero = useCallback((bordero: string) => {
-    // Expand it first
-    setExpandedBordero((prev) => {
-      const next = new Set(prev);
-      next.add(bordero);
-      return next;
-    });
-    // Highlight + scroll after a tick (to let expand render)
-    setHighlightedBordero(bordero);
-    setTimeout(() => {
-      const el = document.querySelector(`[data-bordero="${CSS.escape(bordero)}"]`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
+  /* ─── Timeline filter toggle ─── */
+  const timelineAnimKey = useRef(0);
+  const toggleTimelineFilter = useCallback((borderos: string[]) => {
+    timelineAnimKey.current += 1;
+    setTimelineFilterBorderos((prev) => {
+      // If the same filter is active, clear it (toggle off)
+      if (prev && borderos.every((b) => prev.has(b)) && prev.size === borderos.length) {
+        return null;
       }
-    }, 80);
-    // Clear highlight after animation
-    setTimeout(() => setHighlightedBordero(null), 2500);
+      return new Set(borderos);
+    });
   }, []);
 
   /* ─── Chart data ─── */
@@ -476,15 +585,56 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
             </div>
             {/* Dropdown row */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-              <DropdownFilter label="Negozio" options={uniqueNegozi} value={filterNegozio} onChange={setFilterNegozio} />
-              <DropdownFilter label="Vettore" options={uniqueVettori} value={filterVettore} onChange={setFilterVettore} />
-              <DropdownFilter label="Data Carico" options={uniqueDataCarico} value={filterDataCarico} onChange={setFilterDataCarico} />
-              <DropdownFilter label="Data Consegna" options={uniqueDataConsegna} value={filterDataConsegna} onChange={setFilterDataConsegna} />
-              <DropdownFilter label="Stato" options={uniqueStati} value={filterStato} onChange={setFilterStato} />
+              <MultiSelectFilter label="Negozio" options={uniqueNegozi} selected={filterNegozio} onChange={setFilterNegozio} />
+              <MultiSelectFilter label="Vettore" options={uniqueVettori} selected={filterVettore} onChange={setFilterVettore} />
+              <MultiSelectFilter label="Data Carico" options={uniqueDataCarico} selected={filterDataCarico} onChange={setFilterDataCarico} />
+              <MultiSelectFilter label="Data Consegna" options={uniqueDataConsegna} selected={filterDataConsegna} onChange={setFilterDataConsegna} />
+              <MultiSelectFilter label="Stato" options={uniqueStati} selected={filterStato} onChange={setFilterStato} />
             </div>
+            {/* Active filter tags */}
+            {activeFilterTags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {activeFilterTags.map((tag, idx) => (
+                  <span
+                    key={`${tag.label}-${tag.value}-${idx}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20 animate-in fade-in zoom-in-95 duration-200"
+                  >
+                    <span className="text-blue-400/60">{tag.label}:</span>
+                    <span className="max-w-[120px] truncate">{tag.value}</span>
+                    <button
+                      type="button"
+                      onClick={tag.onRemove}
+                      className="ml-0.5 w-3.5 h-3.5 rounded-full bg-blue-500/20 hover:bg-blue-500/40 flex items-center justify-center transition-colors"
+                    >
+                      <X className="w-2 h-2" />
+                    </button>
+                  </span>
+                ))}
+                {timelineFilterBorderos && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 animate-in fade-in zoom-in-95 duration-200">
+                    <Clock className="w-2.5 h-2.5 text-cyan-400/60" />
+                    <span>Timeline: {timelineFilterBorderos.size} {timelineFilterBorderos.size === 1 ? "corsa" : "corse"}</span>
+                    <button
+                      type="button"
+                      onClick={() => setTimelineFilterBorderos(null)}
+                      className="ml-0.5 w-3.5 h-3.5 rounded-full bg-cyan-500/20 hover:bg-cyan-500/40 flex items-center justify-center transition-colors"
+                    >
+                      <X className="w-2 h-2" />
+                    </button>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="text-[10px] text-gray-400 hover:text-red-400 px-1.5 py-0.5 rounded-md hover:bg-red-500/10 transition-colors"
+                >
+                  Rimuovi tutti
+                </button>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                <Filter className="w-3 h-3" />
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <Filter className="w-3.5 h-3.5" />
                 <>{groupedData.length} borderò ({filteredData.length} fermate totali)</>
               </div>
               <div className="flex items-center gap-2">
@@ -519,37 +669,37 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
               {/* ═══ VISTA RAGGRUPPATA PER BORDERÒ ═══ */}
               <>
                 {/* ── Desktop table (hidden on mobile) ── */}
-                <table className="w-full text-left text-sm whitespace-nowrap hidden md:table">
-                  <thead className="bg-black/40 text-gray-300 uppercase font-semibold text-[11px] tracking-wider sticky top-0 z-10">
+                <table className="w-full text-left text-sm whitespace-nowrap hidden md:table table-fixed">
+                  <thead className="bg-black/40 text-gray-300 uppercase font-semibold text-xs tracking-wider sticky top-0 z-10">
                     <tr>
                       <th className="p-3 w-10"></th>
-                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("stato")}>
+                      <th className="p-3 w-[70px] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("stato")}>
                         <span className="inline-flex items-center gap-1">Stato <SortIcon col="stato" /></span>
                       </th>
-                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("bordero")}>
+                      <th className="p-3 min-w-[140px] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("bordero")}>
                         <span className="inline-flex items-center gap-1">Borderò <SortIcon col="bordero" /></span>
                       </th>
-                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("name")}>
+                      <th className="p-3 min-w-[160px] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("name")}>
                         <span className="inline-flex items-center gap-1">Vettore <SortIcon col="name" /></span>
                       </th>
-                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("data_arrivo_carico")}>
+                      <th className="p-3 w-[100px] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("data_arrivo_carico")}>
                         <span className="inline-flex items-center gap-1">Data Carico <SortIcon col="data_arrivo_carico" /></span>
                       </th>
-                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("data_consegna")}>
+                      <th className="p-3 w-[100px] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("data_consegna")}>
                         <span className="inline-flex items-center gap-1">Data Cons. <SortIcon col="data_consegna" /></span>
                       </th>
-                      <th className="p-3 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("ora_partenza")}>
+                      <th className="p-3 w-[100px] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("ora_partenza")}>
                         <span className="inline-flex items-center gap-1">Ora Part. <SortIcon col="ora_partenza" /></span>
                       </th>
-                      <th className="p-3 text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("fermate")}>
-                        <span className="inline-flex items-center gap-1">Fermate <SortIcon col="fermate" /></span>
+                      <th className="p-3 w-[130px] text-center cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("fermate")}>
+                        <span className="inline-flex items-center gap-1">Avanzamento <SortIcon col="fermate" /></span>
                       </th>
-                      <th className="p-3 text-right cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("pallet")}>
+                      <th className="p-3 w-[70px] text-right cursor-pointer hover:text-white transition-colors" onClick={() => handleSort("pallet")}>
                         <span className="inline-flex items-center gap-1 justify-end">Pallet <SortIcon col="pallet" /></span>
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody key={timelineAnimKey.current} className="divide-y divide-white/5 timeline-filter-animate">
                     {loading && data.length === 0 ? (
                       <tr><td colSpan={9} className="p-12 text-center text-gray-400">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 opacity-50" />Caricamento...
@@ -562,8 +712,9 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                           : hideCompleted ? "Tutte le corse sono completate! 🎉" : "Nessun risultato con i filtri attivi."}
                       </td></tr>
                     ) : (
-                      groupedData.map((group) => {
+                      groupedData.map((group, groupIdx) => {
                         const isExpanded = expandedBordero.has(group.bordero);
+                        const fermatePct = group.fermate.length > 0 ? Math.round((group.pronteCount / group.fermate.length) * 100) : 0;
                         return (
                           <Fragment key={group.bordero}>
                             {/* ── Riga raggruppata ── */}
@@ -571,11 +722,10 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                               data-bordero={group.bordero}
                               onClick={() => toggleExpanded(group.bordero)}
                               className={`cursor-pointer transition-all select-none ${
-                                group.tuttePreparate ? "bg-emerald-900/10" : ""
+                                group.tuttePreparate ? "bg-emerald-900/10" :
+                                groupIdx % 2 === 1 ? "bg-white/[0.015]" : ""
                               } ${
-                                isExpanded ? "bg-white/[0.03]" : "hover:bg-white/5"
-                              } ${
-                                highlightedBordero === group.bordero ? "bordero-highlight" : ""
+                                isExpanded ? "bg-white/[0.04]" : "hover:bg-white/5"
                               }`}
                             >
                               <td className="p-3 text-center">
@@ -584,24 +734,30 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                                 }`} />
                               </td>
                               <td className="p-3">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                                   group.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
                                   group.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
                                   group.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
                                   "bg-gray-500/20 text-gray-300 border border-gray-500/30"
                                 }`}>{group.stato || "N/A"}</span>
                               </td>
-                              <td className="p-3 font-mono text-xs text-gray-300">{group.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</td>
-                              <td className="p-3 text-gray-300 text-xs">{group.name}</td>
-                              <td className="p-3 text-gray-400 text-xs">{group.data_arrivo_carico}</td>
-                              <td className="p-3 text-gray-400 text-xs">{group.data_consegna}</td>
-                              <td className="p-3 text-gray-400 text-xs">{group.ora_partenza}</td>
-                              <td className="p-3 text-center">
-                                <div className="flex items-center justify-center gap-1.5">
-                                  <MapPin className="w-3 h-3 text-gray-500" />
-                                  <span className="text-xs text-gray-300">{group.fermate.length}</span>
-                                  <span className="text-[10px] text-gray-500">•</span>
-                                  <span className={`text-[10px] font-semibold ${
+                              <td className="p-3 font-mono text-[13px] text-gray-200 truncate">{group.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</td>
+                              <td className="p-3 text-gray-200 text-[13px] truncate">{group.name}</td>
+                              <td className="p-3 text-gray-300 text-[13px]">{group.data_arrivo_carico}</td>
+                              <td className="p-3 text-gray-300 text-[13px]">{group.data_consegna}</td>
+                              <td className="p-3 text-gray-300 text-[13px]">{group.ora_partenza}</td>
+                              <td className="p-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-[width] duration-500 ${
+                                        group.tuttePreparate ? "bg-emerald-400" :
+                                        group.pronteCount > 0 ? "bg-gradient-to-r from-amber-500 to-amber-400" : "bg-white/10"
+                                      }`}
+                                      style={{ width: `${fermatePct}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-[11px] font-semibold tabular-nums whitespace-nowrap ${
                                     group.tuttePreparate ? "text-emerald-400" :
                                     group.pronteCount > 0 ? "text-amber-400" : "text-gray-500"
                                   }`}>
@@ -609,7 +765,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                                   </span>
                                 </div>
                               </td>
-                              <td className="p-3 text-right font-bold text-white">{group.totalePallet % 1 === 0 ? group.totalePallet : group.totalePallet.toFixed(1)}</td>
+                              <td className="p-3 text-right font-bold text-white text-[15px]">{group.totalePallet % 1 === 0 ? group.totalePallet : group.totalePallet.toFixed(1)}</td>
                             </tr>
 
                             {/* ── Accordion: card fermate ── */}
@@ -622,40 +778,24 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                                       <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                           <MapPin className="w-3.5 h-3.5 text-blue-400" />
-                                          <span className="text-xs font-semibold text-gray-200">
+                                          <span className="text-[13px] font-semibold text-gray-200">
                                             {group.fermate.length} {group.fermate.length === 1 ? "fermata" : "fermate"}
                                           </span>
                                         </div>
-                                        <div className="flex items-center gap-3">
-                                          {/* Mini progress bar */}
-                                          <div className="flex items-center gap-2">
-                                            <div className="w-20 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                                              <div
-                                                className={`h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-[width] duration-500 ${
-                                                  group.pronteCount === 0 ? "opacity-0" : "opacity-100"
-                                                }`}
-                                                style={{ width: `${group.fermate.length > 0 ? (group.pronteCount / group.fermate.length) * 100 : 0}%` }}
-                                              />
-                                            </div>
-                                            <span className="text-[10px] text-gray-400">
-                                              {group.pronteCount}/{group.fermate.length} pronte
-                                            </span>
-                                          </div>
-                                          {/* (1) Segna tutto pronto / deseleziona */}
-                                          {!isGuest && (
-                                            <button
-                                              onClick={(e) => { e.stopPropagation(); toggleAllPreparate(group.fermate, !group.tuttePreparate); }}
-                                              className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all ${
-                                                group.tuttePreparate
-                                                  ? "bg-gray-500/15 text-gray-400 hover:bg-gray-500/25 border border-gray-500/20"
-                                                  : "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/20"
-                                              }`}
-                                            >
-                                              <CheckCheck className="w-3 h-3" />
-                                              {group.tuttePreparate ? "Deseleziona tutto" : "Segna tutto pronto"}
-                                            </button>
-                                          )}
-                                        </div>
+                                        {/* (1) Segna tutto pronto / deseleziona */}
+                                        {!isGuest && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); toggleAllPreparate(group.fermate, !group.tuttePreparate); }}
+                                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                                              group.tuttePreparate
+                                                ? "bg-gray-500/15 text-gray-400 hover:bg-gray-500/25 border border-gray-500/20"
+                                                : "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/20"
+                                            }`}
+                                          >
+                                            <CheckCheck className="w-3 h-3" />
+                                            {group.tuttePreparate ? "Deseleziona tutto" : "Segna tutto pronto"}
+                                          </button>
+                                        )}
                                       </div>
                                       {/* Fermate list */}
                                       <div className="divide-y divide-white/[0.03]">
@@ -688,16 +828,16 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                                                 <Check className="w-3 h-3" />
                                               </button>
                                               {/* Negozio (5: with highlight) */}
-                                              <div className="flex-1 min-w-0">
-                                                <div className="text-xs font-medium text-white truncate">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-[13px] font-medium text-white truncate">
                                                   <HighlightText text={fermata.descrizione} highlight={searchTerm} />
                                                 </div>
-                                                <div className="text-[10px] text-gray-500">#{fermata.negozio}</div>
+                                                <div className="text-[11px] text-gray-400">#{fermata.negozio}</div>
                                               </div>
                                               {/* Pallet */}
                                               <div className="text-right shrink-0">
-                                                <span className="text-sm font-bold text-white">{fermata.totale}</span>
-                                                <span className="text-[10px] text-gray-500 ml-1">plt</span>
+                                                <span className="text-[15px] font-bold text-white">{fermata.totale}</span>
+                                                <span className="text-[11px] text-gray-400 ml-1">plt</span>
                                               </div>
                                             </div>
                                           );
@@ -718,20 +858,20 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                     <tfoot className="bg-black/30 border-t border-white/10 sticky bottom-0">
                       <tr>
                         <td className="p-3" colSpan={7}>
-                          <span className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">
+                          <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider">
                             Totale {groupedData.length} borderò
                           </span>
                         </td>
                         <td className="p-3 text-center">
-                          <span className="text-xs font-semibold text-gray-300">
+                          <span className="text-[13px] font-semibold text-gray-300">
                             {groupedData.reduce((s, g) => s + g.fermate.length, 0)} fermate
                           </span>
                         </td>
                         <td className="p-3 text-right">
-                          <span className="text-sm font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+                          <span className="text-[15px] font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
                             {(() => { const t = groupedData.reduce((s, g) => s + g.totalePallet, 0); return t % 1 === 0 ? t : t.toFixed(1); })()}
                           </span>
-                          <span className="text-[10px] text-gray-500 ml-1">plt</span>
+                          <span className="text-[11px] text-gray-400 ml-1">plt</span>
                         </td>
                       </tr>
                     </tfoot>
@@ -758,8 +898,6 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                         return (
                           <div key={group.bordero} data-bordero={group.bordero} className={`rounded-xl border overflow-hidden transition-all ${
                             group.tuttePreparate ? "border-emerald-500/20 bg-emerald-900/[0.06]" : "border-white/5 glass-card"
-                          } ${
-                            highlightedBordero === group.bordero ? "bordero-highlight" : ""
                           }`}>
                             {/* Card header */}
                             <button
@@ -923,7 +1061,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
               style={{ width: `${prontePercent}%` }} />
           </div>
 
-          {/* Timeline: Partenze ordinate */}
+          {/* Timeline: Partenze ordinate (raggruppate per vettore) */}
           {groupedData.length > 0 && (() => {
             const timelineEntries = [...groupedData]
               .filter((g) => g.ora_partenza)
@@ -943,6 +1081,14 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                   <div className="space-y-1">
                     {timeSlots.map((time) => {
                       const entries = timelineEntries.filter((g) => g.ora_partenza === time);
+                      // Group entries by carrier name within this time slot
+                      const carrierGroups = new Map<string, GroupedBordero[]>();
+                      entries.forEach((entry) => {
+                        const key = entry.name || "N/A";
+                        if (!carrierGroups.has(key)) carrierGroups.set(key, []);
+                        carrierGroups.get(key)!.push(entry);
+                      });
+
                       return (
                         <div key={time} className="relative">
                           <div className="flex items-center gap-2.5 py-1.5">
@@ -952,29 +1098,51 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                             <span className="text-[11px] font-bold text-white font-mono">{time}</span>
                           </div>
                           <div className="ml-[22px] space-y-1 pb-1">
-                            {entries.map((entry) => {
-                              const pct = entry.fermate.length > 0 ? Math.round((entry.pronteCount / entry.fermate.length) * 100) : 0;
+                            {Array.from(carrierGroups).map(([carrierName, carrierEntries]) => {
+                              const totalFermate = carrierEntries.reduce((s, e) => s + e.fermate.length, 0);
+                              const totalPronte = carrierEntries.reduce((s, e) => s + e.pronteCount, 0);
+                              const totalPlt = carrierEntries.reduce((s, e) => s + e.totalePallet, 0);
+                              const allDone = totalPronte === totalFermate && totalFermate > 0;
+                              const pct = totalFermate > 0 ? Math.round((totalPronte / totalFermate) * 100) : 0;
+                              const count = carrierEntries.length;
+
+                              const carrierBorderoIds = carrierEntries.map((e) => e.bordero);
+                              const isActiveFilter = timelineFilterBorderos !== null &&
+                                carrierBorderoIds.every((b) => timelineFilterBorderos.has(b)) &&
+                                timelineFilterBorderos.size === carrierBorderoIds.length;
+
                               return (
-                                <div key={entry.bordero}
-                                  onClick={() => scrollToBordero(entry.bordero)}
-                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer hover:ring-1 hover:ring-blue-400/30 ${
-                                  entry.tuttePreparate ? "bg-emerald-900/15 border border-emerald-500/15" : "bg-white/[0.03] border border-white/5"
+                                <div key={carrierName}
+                                  onClick={() => toggleTimelineFilter(carrierBorderoIds)}
+                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                                  isActiveFilter
+                                    ? "bg-blue-500/15 border border-blue-400/40 ring-1 ring-blue-400/30 shadow-[0_0_10px_rgba(59,130,246,0.15)]"
+                                    : allDone ? "bg-emerald-900/15 border border-emerald-500/15 hover:ring-1 hover:ring-blue-400/30"
+                                    : "bg-white/[0.03] border border-white/5 hover:ring-1 hover:ring-blue-400/30"
                                 }`}>
                                   <div className={`w-2 h-2 rounded-full shrink-0 ${
-                                    entry.tuttePreparate ? "bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]" :
-                                    entry.pronteCount > 0 ? "bg-amber-400" : "bg-gray-500"
+                                    isActiveFilter ? "bg-blue-400 shadow-[0_0_6px_rgba(59,130,246,0.6)]" :
+                                    allDone ? "bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]" :
+                                    totalPronte > 0 ? "bg-amber-400" : "bg-gray-500"
                                   }`} />
                                   <div className="flex-1 min-w-0">
-                                    <div className="text-[11px] text-gray-200 font-medium truncate">{entry.name}</div>
+                                    <div className={`text-[11px] font-medium truncate ${
+                                      isActiveFilter ? "text-blue-200" : "text-gray-200"
+                                    }`}>
+                                      {carrierName}
+                                      {count > 1 && (
+                                        <span className="ml-1 text-[9px] text-gray-500 font-normal">×{count}</span>
+                                      )}
+                                    </div>
                                     <div className="text-[9px] text-gray-500 truncate">
-                                      {entry.fermate.length} fermate · {entry.totalePallet % 1 === 0 ? entry.totalePallet : entry.totalePallet.toFixed(1)} plt
+                                      {totalFermate} fermate · {totalPlt % 1 === 0 ? totalPlt : totalPlt.toFixed(1)} plt
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-1 shrink-0">
                                     <div className="w-10 h-1 bg-white/5 rounded-full overflow-hidden">
                                       <div className={`h-full rounded-full ${
-                                        entry.tuttePreparate ? "bg-emerald-400" :
-                                        entry.pronteCount > 0 ? "bg-amber-400" : ""
+                                        allDone ? "bg-emerald-400" :
+                                        totalPronte > 0 ? "bg-amber-400" : ""
                                       }`} style={{ width: `${pct}%` }} />
                                     </div>
                                     <span className="text-[9px] text-gray-500 w-7 text-right">{pct}%</span>
