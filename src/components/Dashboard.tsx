@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronsUpDown, FileSpreadsheet, Info, Search, Trash2, X } from "lucide-react";
 import { supabase, authHeaders } from "@/lib/supabase";
 import {
-  STATO_INFO, buildCsv, compareItDates, formatPallet, friendlyDate, getUrgency, groupByBordero, toItDate,
+  STATO_INFO, buildCsv, compareItDates, friendlyDate, getUrgency, groupByBordero, toItDate,
   type Consegna, type GroupedBordero,
 } from "@/lib/consegne";
 import Header, { type LiveStatus } from "./dashboard/Header";
@@ -14,7 +14,7 @@ import TimeRangeSlider, { type HourRange } from "./dashboard/TimeRangeSlider";
 import { TimelineSidebar, TimelineStrip, TimelineTitle } from "./dashboard/Timeline";
 import StatsModal from "./dashboard/StatsModal";
 import { ToastViewport, useToasts } from "./dashboard/Toasts";
-import { Chip, Modal, ProgressBar, Segmented, btn, cx } from "./dashboard/ui";
+import { Chip, Modal, Segmented, btn, cx } from "./dashboard/ui";
 
 type StatusFilter = "tutte" | "da_fare" | "ritardo" | "complete";
 
@@ -61,36 +61,6 @@ function matchesSearch(g: GroupedBordero, s: string) {
 
 function fermataMatches(f: Consegna, s: string) {
   return String(f.negozio) === s || (f.descrizione || "").toLowerCase().includes(s);
-}
-
-/* ─── Tessera indicatore ─── */
-function Kpi({ label, value, sub, tone, onClick, active, children }: {
-  label: string; value: string; sub?: string; tone?: "late" | "warn" | "ok";
-  onClick?: () => void; active?: boolean; children?: React.ReactNode;
-}) {
-  const content = (
-    <>
-      <span className="block text-xs font-medium text-ink-3">{label}</span>
-      <span className={cx(
-        "mt-0.5 block font-mono text-2xl leading-tight font-semibold tnum",
-        tone === "late" ? "text-late" : tone === "warn" ? "text-warn" : tone === "ok" ? "text-ok" : "text-ink",
-      )}>
-        {value}
-        {sub && <span className="ml-1 text-sm font-normal text-ink-3">{sub}</span>}
-      </span>
-      {children}
-    </>
-  );
-  const cls = cx(
-    "rounded-xl border bg-panel px-3.5 py-2.5 text-left",
-    active ? "border-accent" : "border-line",
-  );
-  if (!onClick) return <div className={cls}>{content}</div>;
-  return (
-    <button type="button" onClick={onClick} aria-pressed={active} className={cx(cls, "transition-colors hover:border-line-strong")}>
-      {content}
-    </button>
-  );
 }
 
 /* ═══════════════════════════════════════════ */
@@ -299,14 +269,6 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
   }, [timelineGroups, timelineSel, sortColumn, sortDir]);
 
   const visibleRows = useMemo(() => visibleGroups.flatMap((g) => g.fermate), [visibleGroups]);
-
-  /* ─── Indicatori ─── */
-  const kpi = useMemo(() => {
-    const fermate = timeGroups.reduce((s, g) => s + g.fermate.length, 0);
-    const pronte = timeGroups.reduce((s, g) => s + g.pronteCount, 0);
-    const pallet = timeGroups.reduce((s, g) => s + g.totalePallet, 0);
-    return { fermate, pronte, pallet, pct: fermate ? Math.round((pronte / fermate) * 100) : 0 };
-  }, [timeGroups]);
 
   /* ─── Filtri attivi ─── */
   const clearAllFilters = () => {
@@ -561,21 +523,6 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
       <div className="flex flex-1 xl:overflow-hidden">
         <main className="min-w-0 flex-1 xl:overflow-y-auto">
           <section className="space-y-3 px-4 pt-4 pb-3" aria-label="Riepilogo e filtri">
-            {/* Indicatori */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Kpi label="Fermate pronte" value={`${kpi.pct}%`} sub={`${kpi.pronte}/${kpi.fermate}`}
-                tone={kpi.fermate > 0 && kpi.pct === 100 ? "ok" : undefined}>
-                <ProgressBar value={kpi.pronte} total={kpi.fermate} className="mt-2" />
-              </Kpi>
-              <Kpi label="In ritardo" value={String(statusCounts.ritardo)} sub={statusCounts.ritardo === 1 ? "corsa" : "corse"}
-                tone={statusCounts.ritardo > 0 ? "late" : undefined}
-                onClick={() => setStatusFilter((s) => (s === "ritardo" ? "tutte" : "ritardo"))}
-                active={statusFilter === "ritardo"} />
-              <Kpi label="Partono entro 1 ora" value={String(statusCounts.imminenti)} sub={statusCounts.imminenti === 1 ? "corsa" : "corse"}
-                tone={statusCounts.imminenti > 0 ? "warn" : undefined} />
-              <Kpi label="Pallet" value={formatPallet(kpi.pallet)} sub={`${timeGroups.length} corse`} />
-            </div>
-
             {/* Ricerca */}
             <div className="flex gap-2">
               <div className="relative flex-1">
