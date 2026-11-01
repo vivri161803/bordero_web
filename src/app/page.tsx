@@ -1,23 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import Dashboard from "@/components/Dashboard";
 import Login from "@/components/Login";
 import { RefreshCw } from "lucide-react";
 
 export default function Home() {
-  const [session, setSession] = useState<any>(null);
-  const [isGuest, setIsGuest] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  // La pagina viene renderizzata solo nel browser dopo il caricamento, quindi sessionStorage è disponibile
+  const [isGuest, setIsGuest] = useState(() => {
+    try { return typeof window !== "undefined" && sessionStorage.getItem("bordero_guest") === "true"; } catch { return false; }
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Controlla se l'utente ha una sessione ospite attiva
-    const guestActive = sessionStorage.getItem("bordero_guest") === "true";
-    if (guestActive) {
-      setIsGuest(true);
-    }
-
     // Controlla la sessione iniziale di Supabase
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -58,8 +56,8 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-radial from-[#1e2433] to-[#0f1115]">
-        <RefreshCw className="w-8 h-8 animate-spin text-blue-400 opacity-70" />
+      <div className="flex min-h-dvh items-center justify-center" role="status" aria-label="Caricamento">
+        <RefreshCw className="h-7 w-7 animate-spin text-ink-3" />
       </div>
     );
   }

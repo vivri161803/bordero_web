@@ -1,15 +1,28 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Sans_Condensed, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+const plexSans = IBM_Plex_Sans_Condensed({
+  variable: "--font-plex-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
-  title: "Dashboard Consegne",
-  description: "Dashboard operativa per la gestione delle consegne, basata su Vercel e Supabase.",
+  title: "Borderò · Consegne",
+  description: "Dashboard operativa per la preparazione delle consegne.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#101112",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -19,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="it" className="dark">
-      <body className={`${inter.variable} antialiased text-white`}>
+      <body className={`${plexSans.variable} ${plexMono.variable} antialiased`}>
         {children}
       </body>
     </html>
