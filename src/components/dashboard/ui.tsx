@@ -68,15 +68,17 @@ export function ProgressBar({ value, total, className }: { value: number; total:
 
 /* ─── Selettore a segmenti ─── */
 export function Segmented<T extends string>({
-  value, options, onChange, label,
+  value, options, onChange, label, fill = false,
 }: {
   value: T;
   options: { value: T; label: string; count?: number }[];
   onChange: (v: T) => void;
   label: string;
+  /** Occupa tutta la larghezza disponibile, con i pulsanti di uguale larghezza. */
+  fill?: boolean;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 rounded-lg border border-line bg-panel p-0.5">
+    <div role="radiogroup" aria-label={label} className={cx("shrink-0 rounded-lg border border-line bg-panel p-0.5", fill ? "flex w-full" : "inline-flex")}>
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -88,6 +90,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.value)}
             className={cx(
               "flex min-h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors",
+              fill && "flex-1 justify-center",
               active ? "bg-panel-3 text-ink" : "text-ink-3 hover:text-ink",
             )}
           >
@@ -104,8 +107,8 @@ export function Segmented<T extends string>({
 
 /* ─── Chip filtro rapido ─── */
 export function Chip({
-  active, onClick, children, title,
-}: { active: boolean; onClick: () => void; children: ReactNode; title?: string }) {
+  active, onClick, children, title, className,
+}: { active: boolean; onClick: () => void; children: ReactNode; title?: string; className?: string }) {
   return (
     <button
       type="button"
@@ -117,6 +120,7 @@ export function Chip({
         active
           ? "border-accent bg-accent text-accent-ink"
           : "border-line bg-panel text-ink-2 hover:border-line-strong hover:text-ink",
+        className,
       )}
     >
       {children}

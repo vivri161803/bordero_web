@@ -638,6 +638,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                 <div className="no-scrollbar -mx-4 overflow-x-auto px-4">
                   <Segmented<StatusFilter>
                     label="Stato di preparazione"
+                    fill
                     value={statusFilter}
                     onChange={setStatusFilter}
                     options={[
@@ -652,7 +653,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                   <div className="no-scrollbar -mx-4 flex items-center gap-2 overflow-x-auto px-4">
                     <span className="shrink-0 text-xs font-medium text-ink-3">Consegna</span>
                     {dateChips.map((d) => (
-                      <Chip key={d} active={filterDataConsegna.has(d)} onClick={() => toggleDateChip(d)} title={d}>
+                      <Chip key={d} active={filterDataConsegna.has(d)} onClick={() => toggleDateChip(d)} title={d} className="flex-1 justify-center">
                         {friendlyDate(d, today)}
                         {!friendlyDate(d, today).includes("/") && <span className="font-mono text-xs opacity-70">{d.slice(0, 5)}</span>}
                       </Chip>
