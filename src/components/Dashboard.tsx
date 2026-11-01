@@ -738,6 +738,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                                   group.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
                                   group.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
                                   group.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                                  group.stato === "INV" ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" :
                                   "bg-gray-500/20 text-gray-300 border border-gray-500/30"
                                 }`}>{group.stato || "N/A"}</span>
                               </td>
@@ -832,7 +833,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                                                 <div className="text-[13px] font-medium text-white truncate">
                                                   <HighlightText text={fermata.descrizione} highlight={searchTerm} />
                                                 </div>
-                                                <div className="text-[11px] text-gray-400">#{fermata.negozio}</div>
+                                                <div className="text-[11px] text-gray-400">{fermata.negozio ? `#${fermata.negozio}` : "Provincia"}</div>
                                               </div>
                                               {/* Pallet */}
                                               <div className="text-right shrink-0">
@@ -913,6 +914,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                                     group.stato === "ACC" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
                                     group.stato === "CHI" ? "bg-green-500/20 text-green-300 border border-green-500/30" :
                                     group.stato === "VAL" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                                    group.stato === "INV" ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" :
                                     "bg-gray-500/20 text-gray-300 border border-gray-500/30"
                                   }`}>{group.stato || "N/A"}</span>
                                   <span className="text-xs text-gray-300 font-mono truncate">{group.bordero?.replace("ID: ", "").replace("\nBORDERO:", "") || "-"}</span>
@@ -985,7 +987,7 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                                           <div className="text-xs font-medium text-white truncate">
                                             <HighlightText text={fermata.descrizione} highlight={searchTerm} />
                                           </div>
-                                          <div className="text-[10px] text-gray-500">#{fermata.negozio}</div>
+                                          <div className="text-[10px] text-gray-500">{fermata.negozio ? `#${fermata.negozio}` : "Provincia"}</div>
                                         </div>
                                         <div className="text-right shrink-0">
                                           <span className="text-sm font-bold text-white">{fermata.totale}</span>

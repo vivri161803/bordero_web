@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
         
         if (typeof dataBorderoCell === "string" && dataBorderoCell.startsWith("ID:")) {
           currentBordero = dataBorderoCell;
-          currentStato = canCell ? String(canCell) : null;
+          currentStato = canCell ? String(canCell).trim() : null;
           
           if (i + 2 < data.length && data[i + 2] && data[i + 2][1]) {
              currentDataArrivo = String(data[i + 2][1]);
@@ -102,6 +102,24 @@ export async function POST(req: NextRequest) {
             ora_partenza: row[2] ? String(row[2]) : "",
             negozio: codPdv,
             descrizione: row[5] ? String(row[5]) : "",
+            data_consegna: data_consegna || "",
+            name: vettore,
+            data_preparazione: null,
+            controllo: "ok",
+            totale: plt
+          });
+        } else if (currentStato === "INV" && isNaN(codPdv) && !isNaN(plt)) {
+          // Corse INV: nessun negozio, solo provincia (col. Prv.) e pallet.
+          // Salviamo una riga per provincia con negozio = 0.
+          const provincia = row[6] ? String(row[6]).trim() : "";
+          df_finali.push({
+            preparata: false,
+            bordero: currentBordero || "",
+            stato: currentStato,
+            data_arrivo_carico: currentDataArrivo || "",
+            ora_partenza: row[2] ? String(row[2]) : "",
+            negozio: 0,
+            descrizione: provincia || "N/D",
             data_consegna: data_consegna || "",
             name: vettore,
             data_preparazione: null,
