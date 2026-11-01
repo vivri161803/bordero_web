@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronsUpDown, FileSpreadsheet, Info, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ChevronsUpDown, FileSpreadsheet, Info, Search, Trash2, X } from "lucide-react";
 import { supabase, authHeaders } from "@/lib/supabase";
 import {
   STATO_INFO, buildCsv, compareItDates, formatPallet, friendlyDate, getUrgency, groupByBordero, toItDate,
@@ -118,7 +118,6 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
   const [expanded, setExpanded] = useState(() => new Set(initialView.expanded));
   const [timelineSel, setTimelineSel] = useState<Set<string> | null>(null);
 
-  const [showFilters, setShowFilters] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showReset, setShowReset] = useState(false);
   const [resetText, setResetText] = useState("");
@@ -335,7 +334,6 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
     label: `Timeline: ${timelineSel.size} ${timelineSel.size === 1 ? "corsa" : "corse"}`,
     onRemove: () => setTimelineSel(null),
   });
-  const advancedCount = filterNegozio.size + filterVettore.size + filterDataCarico.size + filterStato.size;
   const anyFilter = activeTags.length > 0 || !!search || statusFilter !== "tutte";
 
   /* ─── Espansione ─── */
@@ -603,19 +601,6 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                   <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded border border-line px-1.5 font-mono text-xs text-ink-3 lg:block">/</kbd>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setShowFilters((s) => !s)}
-                aria-expanded={showFilters}
-                aria-controls="filtri-avanzati"
-                className={cx(btn.secondary, "min-h-11 shrink-0", (showFilters || advancedCount > 0) && "border-accent/60 text-ink")}
-              >
-                <SlidersHorizontal className="h-4 w-4" />
-                <span className="hidden sm:inline">Filtri</span>
-                {advancedCount > 0 && (
-                  <span className="rounded-full bg-accent px-1.5 font-mono text-xs font-semibold text-accent-ink tnum">{advancedCount}</span>
-                )}
-              </button>
             </div>
             {quickCandidates.length === 1 && (
               <p className="-mt-1 text-sm text-ink-3">
@@ -625,8 +610,8 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
             )}
 
             {/* Filtri avanzati */}
-            {showFilters && (
-              <div id="filtri-avanzati" className="anim-fade-up rounded-xl border border-line bg-panel p-3">
+            {/* z-30: i menu a tendina devono restare sopra il pannello della fascia oraria */}
+            <div id="filtri-avanzati" className="relative z-30 rounded-xl border border-line bg-panel p-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <MultiSelectFilter label="Negozio" options={uniqueNegozi} selected={filterNegozio} onChange={setFilterNegozio} />
                   <MultiSelectFilter label="Vettore" options={uniqueVettori} selected={filterVettore} onChange={setFilterVettore} />
@@ -646,10 +631,9 @@ export default function Dashboard({ isGuest = false, onLogout }: { isGuest?: boo
                   </span>
                 </div>
               </div>
-            )}
 
-            {/* Filtri rapidi + fascia oraria */}
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,400px)] lg:items-start lg:gap-6">
+            {/* Metà sinistra: completamento e data di consegna · metà destra: fascia di partenza */}
+            <div className="grid gap-3 lg:grid-cols-2 lg:items-start lg:gap-6">
               <div className="min-w-0 space-y-3">
                 <div className="no-scrollbar -mx-4 overflow-x-auto px-4">
                   <Segmented<StatusFilter>
